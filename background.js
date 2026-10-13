@@ -25,11 +25,11 @@ function checkAndDownloadMedia() {
     }, (results) => {
       if (!results || !results[0] || !results[0].result) return;
 
-      const mediaItems = results[0].result;
+      // Extract items and REVERSE them so the oldest (bottom-most) downloads first
+      const mediaItems = results[0].result.reverse();
 
-      chrome.storage.local.get(['downloadedHistory', 'fileCounter', 'customFolder'], (data) => {
+      chrome.storage.local.get(['downloadedHistory', 'customFolder'], (data) => {
         let history = data.downloadedHistory || [];
-        let counter = data.fileCounter || 1;
         let folder = (data.customFolder || 'GoogleFlow_Media').trim().replace(/[\\/:*?"<>|]/g, '');
         let newFound = 0;
 
@@ -38,12 +38,15 @@ function checkAndDownloadMedia() {
             history.push(item.url);
             newFound++;
 
-            const fileNum = String(counter).padStart(3, '0');
+            // Clean original Flow name or prompt text
+            let safeTitle = item.title.replace(/[\\/:*?"<>|]/g, '_').trim();
+            if (!safeTitle) safeTitle = 'Flow_Media';
+
             const ext = item.type === 'video' ? 'mp4' : 'webp';
+            const fileName = `${safeTitle}.${ext}`;
             
             // Build path inside Downloads folder
-            const savePath = folder ? `${folder}/Flow_Media_${fileNum}.${ext}` : `Flow_Media_${fileNum}.${ext}`;
-            counter++;
+            const savePath = folder ? `${folder}/${fileName}` : fileName;
 
             chrome.downloads.download({
               url: item.url,
@@ -54,10 +57,7 @@ function checkAndDownloadMedia() {
         });
 
         if (newFound > 0) {
-          chrome.storage.local.set({ 
-            downloadedHistory: history, 
-            fileCounter: counter 
-          });
+          chrome.storage.local.set({ downloadedHistory: history });
         }
       });
     });
@@ -68,17 +68,28 @@ function extractMediaUrls() {
   const foundItems = [];
   const addedUrls = new Set();
 
+  // Helper to extract clean prompt or title from element attributes/alt/title
+  function getElementTitle(el) {
+    return el.getAttribute('alt') || 
+           el.getAttribute('title') || 
+           el.getAttribute('aria-label') || 
+           el.dataset.prompt || 
+           '';
+  }
+
   // 1. Detect Videos
   document.querySelectorAll('video').forEach(video => {
     let src = video.src || video.currentSrc;
+    let title = getElementTitle(video) || getElementTitle(video.parentElement) || '';
+    
     if (src && !addedUrls.has(src)) {
       addedUrls.add(src);
-      foundItems.push({ url: src, type: 'video' });
+      foundItems.push({ url: src, type: 'video', title: title });
     }
     video.querySelectorAll('source').forEach(source => {
       if (source.src && !addedUrls.has(source.src)) {
         addedUrls.add(source.src);
-        foundItems.push({ url: source.src, type: 'video' });
+        foundItems.push({ url: source.src, type: 'video', title: title });
       }
     });
   });
@@ -86,9 +97,10 @@ function extractMediaUrls() {
   // 2. Detect Images
   document.querySelectorAll('img').forEach(img => {
     let src = img.src || (img.dataset && img.dataset.src);
+    let title = getElementTitle(img);
     if (src && !addedUrls.has(src)) {
       addedUrls.add(src);
-      foundItems.push({ url: src, type: 'image' });
+      foundItems.push({ url: src, type: 'image', title: title });
     }
   });
 
@@ -99,7 +111,7 @@ function extractMediaUrls() {
       const match = bg.match(/url\(["']?(.*?)["']?\)/);
       if (match && match[1] && !addedUrls.has(match[1])) {
         addedUrls.add(match[1]);
-        foundItems.push({ url: match[1], type: 'image' });
+        foundItems.push({ url: match[1], type: 'image', title: getElementTitle(el) });
       }
     }
   });
