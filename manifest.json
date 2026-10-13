@@ -17,28 +17,6 @@
     "default_icon": "icon.png"
   },
   "icons": {
-    "128": "icon.png"
-  }
-}
-{
-  "manifest_version": 3,
-  "name": "NB Auto Downloader",
-  "version": "1.0",
-  "description": "Custom lightweight auto downloader without login requirement.",
-  "permissions": [
-    "downloads",
-    "activeTab",
-    "scripting",
-    "storage"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": "icon.png"
-  },
-  "icons": {
     "16": "icon.png",
     "48": "icon.png",
     "128": "icon.png"
