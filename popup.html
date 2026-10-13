@@ -4,42 +4,50 @@
   <meta charset="utf-8">
   <style>
     body {
-      width: 220px;
+      width: 230px;
       padding: 15px;
       font-family: Arial, sans-serif;
       text-align: center;
       background-color: #f8f9fa;
     }
     h3 {
-      margin-top: 0;
+      margin: 0 0 10px 0;
       color: #333;
-      font-size: 16px;
+      font-size: 15px;
     }
     button {
       width: 100%;
-      padding: 10px;
+      padding: 9px;
+      margin-bottom: 8px;
       background-color: #0d6efd;
       color: white;
       border: none;
       border-radius: 6px;
       cursor: pointer;
       font-weight: bold;
-      font-size: 14px;
+      font-size: 13px;
     }
     button:hover {
       background-color: #0b5ed7;
     }
+    .toggle-btn {
+      background-color: #198754;
+    }
+    .toggle-btn.active {
+      background-color: #dc3545;
+    }
     #status {
-      margin-top: 10px;
-      font-size: 12px;
+      margin-top: 8px;
+      font-size: 11px;
       color: #6c757d;
     }
   </style>
 </head>
 <body>
   <h3>NB Auto Downloader</h3>
-  <button id="downloadBtn">Start Auto Download</button>
-  <div id="status">Ready</div>
+  <button id="downloadBtn">Download Current Media</button>
+  <button id="autoToggleBtn" class="toggle-btn">Start Auto Monitoring</button>
+  <div id="status">Status: Ready</div>
 
   <script src="popup.js"></script>
 </body>
