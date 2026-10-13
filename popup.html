@@ -4,159 +4,137 @@
   <meta charset="utf-8">
   <style>
     body {
-      width: 240px;
-      padding: 15px;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background-color: #f8f9fa;
+      width: 260px;
+      padding: 16px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #1e1e2f, #2a2a40);
+      color: #ffffff;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 8px;
+    }
+    .header img {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
     }
     h3 {
-      margin: 0 0 12px 0;
-      color: #333;
+      margin: 0;
+      color: #00d2ff;
       font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
     }
     .field-group {
       margin-bottom: 10px;
-      text-align: left;
     }
     label {
       font-size: 11px;
-      color: #555;
-      font-weight: bold;
+      color: #b0b0c3;
+      font-weight: 600;
       display: block;
       margin-bottom: 4px;
     }
-    input[type="text"] {
-      width: 90%;
+    input[type="text"], select {
+      width: 100%;
       padding: 7px;
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border-radius: 6px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: #00d2ff;
+    }
+    select option {
+      background: #2a2a40;
+      color: #fff;
+    }
+    .checkbox-group {
+      display: flex;
+      justify-content: space-between;
+      margin: 10px 0;
       font-size: 12px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      color: #d0d0e0;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: #fff;
+      cursor: pointer;
+      margin-bottom: 0;
     }
     button {
       width: 100%;
       padding: 9px;
       margin-bottom: 8px;
-      background-color: #0d6efd;
+      background: linear-gradient(135deg, #0072ff, #00c6ff);
       color: white;
       border: none;
       border-radius: 6px;
       cursor: pointer;
-      font-weight: bold;
-      font-size: 13px;
+      font-weight: 600;
+      font-size: 12px;
+      box-shadow: 0 4px 10px rgba(0, 114, 255, 0.3);
+      transition: transform 0.1s, opacity 0.2s;
     }
     button:hover {
-      background-color: #0b5ed7;
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    button:active {
+      transform: translateY(0);
     }
     .toggle-btn {
-      background-color: #198754;
+      background: linear-gradient(135deg, #11998e, #38ef7d);
+      box-shadow: 0 4px 10px rgba(17, 153, 142, 0.3);
     }
     .toggle-btn.active {
-      background-color: #dc3545;
+      background: linear-gradient(135deg, #cb2d3e, #ef473a);
+      box-shadow: 0 4px 10px rgba(239, 71, 58, 0.3);
+    }
+    .reset-btn {
+      background: rgba(255, 255, 255, 0.08);
+      color: #b0b0c3;
+      font-size: 11px;
+      padding: 7px;
+      box-shadow: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .reset-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
     }
     #status {
       margin-top: 8px;
       font-size: 11px;
-      color: #6c757d;
+      color: #00d2ff;
+      text-align: center;
+      font-weight: 500;
     }
   </style>
 </head>
 <body>
-  <h3>NB Auto Downloader</h3>
-
-  <div class="field-group">
-    <label for="folderInput">Save Folder (inside Downloads):</label>
-    <input type="text" id="folderInput" placeholder="e.g. GoogleFlow_Media">
+  <div class="header">
+    <img src="icon.png" alt="Logo">
+    <h3>NB Auto Downloader</h3>
   </div>
-
-  <button id="downloadBtn">Download Current Media</button>
-  <button id="autoToggleBtn" class="toggle-btn">Start Auto Monitoring</button>
-  <div id="status">Status: Ready</div>
-
-  <script src="popup.js"></script>
-</body>
-</html>
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body {
-      width: 250px;
-      padding: 15px;
-      font-family: Arial, sans-serif;
-      background-color: #f8f9fa;
-    }
-    h3 {
-      margin: 0 0 10px 0;
-      color: #333;
-      font-size: 15px;
-      text-align: center;
-    }
-    .field-group {
-      margin-bottom: 8px;
-    }
-    label {
-      font-size: 11px;
-      color: #555;
-      font-weight: bold;
-      display: block;
-      margin-bottom: 3px;
-    }
-    input[type="text"], select {
-      width: 100%;
-      padding: 6px;
-      font-size: 11px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      box-sizing: border-box;
-    }
-    .checkbox-group {
-      display: flex;
-      justify-content: space-between;
-      margin: 8px 0;
-      font-size: 12px;
-      color: #333;
-    }
-    button {
-      width: 100%;
-      padding: 8px;
-      margin-bottom: 6px;
-      background-color: #0d6efd;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: bold;
-      font-size: 12px;
-    }
-    button:hover {
-      background-color: #0b5ed7;
-    }
-    .toggle-btn {
-      background-color: #198754;
-    }
-    .toggle-btn.active {
-      background-color: #dc3545;
-    }
-    .reset-btn {
-      background-color: #6c757d;
-      font-size: 11px;
-      padding: 6px;
-    }
-    .reset-btn:hover {
-      background-color: #5c636a;
-    }
-    #status {
-      margin-top: 6px;
-      font-size: 11px;
-      color: #6c757d;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <h3>NB Auto Downloader</h3>
 
   <div class="field-group">
     <label for="folderInput">Save Folder (inside Downloads):</label>
@@ -179,7 +157,7 @@
   </div>
 
   <button id="downloadBtn">Download Current Page</button>
-  <button id="autoToggleBtn" class="toggle-btn">Start Auto Monitoring</button>
+  <button id="autoToggleBtn" class="toggle-v toggle-btn">Start Auto Monitoring</button>
   <button id="resetBtn" class="reset-btn">Reset History / Clear Log</button>
   
   <div id="status">Status: Ready</div>
