@@ -25,25 +25,26 @@ function checkAndDownloadMedia() {
     }, (results) => {
       if (!results || !results[0] || !results[0].result) return;
 
-      const mediaUrls = results[0].result;
+      const mediaItems = results[0].result; // Objects containing { url, type }
 
       chrome.storage.local.get(['downloadedHistory', 'fileCounter'], (data) => {
         let history = data.downloadedHistory || [];
         let counter = data.fileCounter || 1;
         let newFound = 0;
 
-        mediaUrls.forEach((url) => {
-          if (!history.includes(url)) {
-            history.push(url);
+        mediaItems.forEach((item) => {
+          if (!history.includes(item.url)) {
+            history.push(item.url);
             newFound++;
 
             const fileNum = String(counter).padStart(3, '0');
-            const fileName = `Flow_Media_${fileNum}`;
+            const ext = item.type === 'video' ? 'mp4' : 'webp';
+            const fileName = `Flow_Media_${fileNum}.${ext}`;
             counter++;
 
             chrome.downloads.download({
-              url: url,
-              filename: `${fileName}.webp`,
+              url: item.url,
+              filename: fileName,
               conflictAction: 'uniquify'
             });
           }
@@ -61,19 +62,46 @@ function checkAndDownloadMedia() {
 }
 
 function extractMediaUrls() {
-  const foundUrls = new Set();
-  document.querySelectorAll('img').forEach(img => {
-    if (img.src) foundUrls.add(img.src);
-    if (img.dataset && img.dataset.src) foundUrls.add(img.dataset.src);
+  const foundItems = [];
+  const addedUrls = new Set();
+
+  // 1. Detect Videos (<video> tags and <source> elements)
+  document.querySelectorAll('video').forEach(video => {
+    let src = video.src || video.currentSrc;
+    if (src && !addedUrls.has(src)) {
+      addedUrls.add(src);
+      foundItems.push({ url: src, type: 'video' });
+    }
+    video.querySelectorAll('source').forEach(source => {
+      if (source.src && !addedUrls.has(source.src)) {
+        addedUrls.add(source.src);
+        foundItems.push({ url: source.src, type: 'video' });
+      }
+    });
   });
+
+  // 2. Detect Images (<img> tags)
+  document.querySelectorAll('img').forEach(img => {
+    let src = img.src || (img.dataset && img.dataset.src);
+    if (src && !addedUrls.has(src)) {
+      addedUrls.add(src);
+      foundItems.push({ url: src, type: 'image' });
+    }
+  });
+
+  // 3. Detect Background Images
   document.querySelectorAll('*').forEach(el => {
     const bg = window.getComputedStyle(el).backgroundImage;
     if (bg && bg !== 'none') {
       const match = bg.match(/url\(["']?(.*?)["']?\)/);
-      if (match && match[1]) foundUrls.add(match[1]);
+      if (match && match[1] && !addedUrls.has(match[1])) {
+        addedUrls.add(match[1]);
+        foundItems.push({ url: match[1], type: 'image' });
+      }
     }
   });
-  return Array.from(foundUrls).filter(url => 
-    url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')
+
+  return foundItems.filter(item => 
+    item.url.startsWith('http') || item.url.startsWith('blob:') || item.url.startsWith('data:')
   );
 }
