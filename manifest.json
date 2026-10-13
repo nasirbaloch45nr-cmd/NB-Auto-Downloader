@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "NB Auto Downloader",
+  "version": "1.0",
+  "description": "Custom lightweight auto downloader without login requirement.",
+  "permissions": [
+    "downloads",
+    "activeTab"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
