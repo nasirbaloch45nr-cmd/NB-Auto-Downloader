@@ -25,11 +25,12 @@ function checkAndDownloadMedia() {
     }, (results) => {
       if (!results || !results[0] || !results[0].result) return;
 
-      const mediaItems = results[0].result; // Objects containing { url, type }
+      const mediaItems = results[0].result;
 
-      chrome.storage.local.get(['downloadedHistory', 'fileCounter'], (data) => {
+      chrome.storage.local.get(['downloadedHistory', 'fileCounter', 'customFolder'], (data) => {
         let history = data.downloadedHistory || [];
         let counter = data.fileCounter || 1;
+        let folder = (data.customFolder || 'GoogleFlow_Media').trim().replace(/[\\/:*?"<>|]/g, '');
         let newFound = 0;
 
         mediaItems.forEach((item) => {
@@ -39,12 +40,14 @@ function checkAndDownloadMedia() {
 
             const fileNum = String(counter).padStart(3, '0');
             const ext = item.type === 'video' ? 'mp4' : 'webp';
-            const fileName = `Flow_Media_${fileNum}.${ext}`;
+            
+            // Build path inside Downloads folder
+            const savePath = folder ? `${folder}/Flow_Media_${fileNum}.${ext}` : `Flow_Media_${fileNum}.${ext}`;
             counter++;
 
             chrome.downloads.download({
               url: item.url,
-              filename: fileName,
+              filename: savePath,
               conflictAction: 'uniquify'
             });
           }
@@ -65,7 +68,7 @@ function extractMediaUrls() {
   const foundItems = [];
   const addedUrls = new Set();
 
-  // 1. Detect Videos (<video> tags and <source> elements)
+  // 1. Detect Videos
   document.querySelectorAll('video').forEach(video => {
     let src = video.src || video.currentSrc;
     if (src && !addedUrls.has(src)) {
@@ -80,7 +83,7 @@ function extractMediaUrls() {
     });
   });
 
-  // 2. Detect Images (<img> tags)
+  // 2. Detect Images
   document.querySelectorAll('img').forEach(img => {
     let src = img.src || (img.dataset && img.dataset.src);
     if (src && !addedUrls.has(src)) {
