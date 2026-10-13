@@ -76,3 +76,114 @@
   <script src="popup.js"></script>
 </body>
 </html>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 250px;
+      padding: 15px;
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+    }
+    h3 {
+      margin: 0 0 10px 0;
+      color: #333;
+      font-size: 15px;
+      text-align: center;
+    }
+    .field-group {
+      margin-bottom: 8px;
+    }
+    label {
+      font-size: 11px;
+      color: #555;
+      font-weight: bold;
+      display: block;
+      margin-bottom: 3px;
+    }
+    input[type="text"], select {
+      width: 100%;
+      padding: 6px;
+      font-size: 11px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .checkbox-group {
+      display: flex;
+      justify-content: space-between;
+      margin: 8px 0;
+      font-size: 12px;
+      color: #333;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 6px;
+      background-color: #0d6efd;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    button:hover {
+      background-color: #0b5ed7;
+    }
+    .toggle-btn {
+      background-color: #198754;
+    }
+    .toggle-btn.active {
+      background-color: #dc3545;
+    }
+    .reset-btn {
+      background-color: #6c757d;
+      font-size: 11px;
+      padding: 6px;
+    }
+    .reset-btn:hover {
+      background-color: #5c636a;
+    }
+    #status {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #6c757d;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h3>NB Auto Downloader</h3>
+
+  <div class="field-group">
+    <label for="folderInput">Save Folder (inside Downloads):</label>
+    <input type="text" id="folderInput" placeholder="GoogleFlow_Media">
+  </div>
+
+  <div class="checkbox-group">
+    <label><input type="checkbox" id="dlVideos" checked> Videos (.mp4)</label>
+    <label><input type="checkbox" id="dlImages" checked> Images (.webp)</label>
+  </div>
+
+  <div class="field-group">
+    <label for="intervalSelect">Check Interval:</label>
+    <select id="intervalSelect">
+      <option value="2000">Every 2 Seconds</option>
+      <option value="3000" selected>Every 3 Seconds</option>
+      <option value="5000">Every 5 Seconds</option>
+      <option value="10000">Every 10 Seconds</option>
+    </select>
+  </div>
+
+  <button id="downloadBtn">Download Current Page</button>
+  <button id="autoToggleBtn" class="toggle-btn">Start Auto Monitoring</button>
+  <button id="resetBtn" class="reset-btn">Reset History / Clear Log</button>
+  
+  <div id="status">Status: Ready</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
