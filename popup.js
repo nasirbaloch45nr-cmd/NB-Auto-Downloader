@@ -1,62 +1,47 @@
-document.getElementById('downloadBtn').addEventListener('click', () => {
-  const statusDiv = document.getElementById('status');
-  statusDiv.textContent = 'Searching media...';
-
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    chrome.scripting.executeScript({
-      target: { tabId: tabs[0].id },
-      func: downloadPageMedia
-    });
+document.addEventListener('DOMContentLoaded', () => {
+  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
+    if (response && response.isRunning) {
+      updateUIState(true);
+    }
   });
 });
 
-function downloadPageMedia() {
-  const foundUrls = new Set();
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  const statusDiv = document.getElementById('status');
+  statusDiv.textContent = 'Downloading current...';
+  chrome.runtime.sendMessage({ action: 'startMonitoring' });
+  setTimeout(() => {
+    statusDiv.textContent = 'Status: Done / Monitoring';
+  }, 1500);
+});
 
-  // 1. Standard Image Tags (<img>)
-  document.querySelectorAll('img').forEach(img => {
-    if (img.src) foundUrls.add(img.src);
-    if (img.dataset.src) foundUrls.add(img.dataset.src);
-  });
+document.getElementById('autoToggleBtn').addEventListener('click', () => {
+  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
+    const isRunning = response ? response.isRunning : false;
 
-  // 2. CSS Background Images
-  document.querySelectorAll('*').forEach(el => {
-    const bg = window.getComputedStyle(el).backgroundImage;
-    if (bg && bg !== 'none') {
-      const match = bg.match(/url\(["']?(.*?)["']?\)/);
-      if (match && match[1]) foundUrls.add(match[1]);
+    if (!isRunning) {
+      chrome.runtime.sendMessage({ action: 'startMonitoring' }, () => {
+        updateUIState(true);
+      });
+    } else {
+      chrome.runtime.sendMessage({ action: 'stopMonitoring' }, () => {
+        updateUIState(false);
+      });
     }
   });
+});
 
-  // 3. Anchor Tag Links (<a>)
-  document.querySelectorAll('a').forEach(a => {
-    if (a.href && a.href.match(/\.(jpeg|jpg|gif|png|webp|svg|mp4|webm)$/i)) {
-      foundUrls.add(a.href);
-    }
-  });
+function updateUIState(isRunning) {
+  const toggleBtn = document.getElementById('autoToggleBtn');
+  const statusDiv = document.getElementById('status');
 
-  // Convert Set to Array
-  const mediaUrls = Array.from(foundUrls).filter(url => 
-    url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')
-  );
-
-  if (mediaUrls.length === 0) {
-    alert('No downloadable media found on this page.');
-    return;
+  if (isRunning) {
+    toggleBtn.textContent = 'Stop Auto Monitoring';
+    toggleBtn.classList.add('active');
+    statusDiv.textContent = 'Status: Background Live...';
+  } else {
+    toggleBtn.textContent = 'Start Auto Monitoring';
+    toggleBtn.classList.remove('active');
+    statusDiv.textContent = 'Status: Monitoring Stopped';
   }
-
-  // Trigger Download via programmatic link creation
-  let downloadedCount = 0;
-  mediaUrls.forEach((url, index) => {
-    setTimeout(() => {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `media_download_${index + 1}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }, index * 300); // Small delay to avoid blocking
-  });
-
-  alert(`Found and initiated download for ${mediaUrls.length} media item(s)!`);
 }
