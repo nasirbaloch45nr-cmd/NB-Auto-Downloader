@@ -4,16 +4,34 @@
   <meta charset="utf-8">
   <style>
     body {
-      width: 230px;
+      width: 240px;
       padding: 15px;
       font-family: Arial, sans-serif;
       text-align: center;
       background-color: #f8f9fa;
     }
     h3 {
-      margin: 0 0 10px 0;
+      margin: 0 0 12px 0;
       color: #333;
       font-size: 15px;
+    }
+    .field-group {
+      margin-bottom: 10px;
+      text-align: left;
+    }
+    label {
+      font-size: 11px;
+      color: #555;
+      font-weight: bold;
+      display: block;
+      margin-bottom: 4px;
+    }
+    input[type="text"] {
+      width: 90%;
+      padding: 7px;
+      font-size: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
     button {
       width: 100%;
@@ -45,6 +63,12 @@
 </head>
 <body>
   <h3>NB Auto Downloader</h3>
+
+  <div class="field-group">
+    <label for="folderInput">Save Folder (inside Downloads):</label>
+    <input type="text" id="folderInput" placeholder="e.g. GoogleFlow_Media">
+  </div>
+
   <button id="downloadBtn">Download Current Media</button>
   <button id="autoToggleBtn" class="toggle-btn">Start Auto Monitoring</button>
   <div id="status">Status: Ready</div>
