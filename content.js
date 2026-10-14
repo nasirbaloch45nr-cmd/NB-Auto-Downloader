@@ -1,32 +1,19 @@
-// Google Flow Media Extractor & Real-Time Observer
+console.log("NB Auto Downloader: Content script active on page!");
 
 function sanitizeFilename(text) {
   if (!text) return 'Clip';
   return text.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, 30);
 }
 
-function getFormattedDateTime() {
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, '0');
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const yy = String(now.getFullYear()).slice(-2);
-  const hh = String(now.getHours()).padStart(2, '0');
-  const min = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
-  return `${dd}${mm}${yy}_${hh}${min}${ss}`;
-}
-
-// Check if media is fully rendered (filters out loading / generating placeholders)
 function isMediaComplete(element) {
   if (!element) return false;
   
-  // Skip loading indicators, blurred low-res previews, or generating spinners
   if (element.closest('[class*="loading"], [class*="generating"], [class*="spinner"]')) {
     return false;
   }
   
   if (element.tagName === 'IMG') {
-    return element.complete && element.naturalWidth > 200; // Ensures high-res full image
+    return element.complete && element.naturalWidth > 150;
   }
   
   if (element.tagName === 'VIDEO') {
@@ -38,8 +25,6 @@ function isMediaComplete(element) {
 
 function scanGoogleFlowMedia(dlVideos = true, dlImages = true) {
   const mediaList = [];
-  
-  // Target Google Flow grid containers
   const items = document.querySelectorAll('img, video');
   
   items.forEach((elem) => {
@@ -54,7 +39,6 @@ function scanGoogleFlowMedia(dlVideos = true, dlImages = true) {
     if (isVideo && !dlVideos) return;
     if (isImage && !dlImages) return;
 
-    // Extract title or prompt text nearby in Google Flow UI
     let promptText = elem.getAttribute('alt') || 
                      elem.getAttribute('aria-label') || 
                      elem.closest('[class*="card"], [class*="item"]')?.textContent || 
@@ -72,7 +56,6 @@ function scanGoogleFlowMedia(dlVideos = true, dlImages = true) {
   return mediaList;
 }
 
-// Listen for messages from popup & background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scanAndDownload') {
     const media = scanGoogleFlowMedia(request.dlVideos, request.dlImages);
