@@ -94,3 +94,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+// File Name: popup.js
+
+// Settings ko Chrome Storage mein save karna
+document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+    const aspectRatio = document.getElementById('aspectRatioSelect').value;
+    const videoQuality = document.getElementById('videoQualitySelect').value;
+    const imageQuality = document.getElementById('imageQualitySelect').value;
+
+    chrome.storage.sync.set({
+        userAspectRatio: aspectRatio,
+        userVideoQuality: videoQuality,
+        userImageQuality: imageQuality
+    }, () => {
+        console.log("Settings successfully saved!");
+        alert("Settings saved successfully!");
+    });
+});
+
+// Extension khulte hi purani saved settings load karna
+document.addEventListener('DOMContentLoaded', () => {
+    chrome.storage.sync.get(['userAspectRatio', 'userVideoQuality', 'userImageQuality'], (data) => {
+        if (data.userAspectRatio) {
+            document.getElementById('aspectRatioSelect').value = data.userAspectRatio;
+        }
+        if (data.userVideoQuality) {
+            document.getElementById('videoQualitySelect').value = data.userVideoQuality;
+        }
+        if (data.userImageQuality) {
+            document.getElementById('imageQualitySelect').value = data.userImageQuality;
+        }
+    });
+});
