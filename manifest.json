@@ -11,6 +11,8 @@
     "alarms"
   ],
   "host_permissions": [
+    "*://flow.google.com/*",
+    "*://*.google.com/*",
     "<all_urls>"
   ],
   "action": {
@@ -31,8 +33,14 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "matches": [
+        "*://flow.google.com/*",
+        "*://*.google.com/*",
+        "<all_urls>"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }
