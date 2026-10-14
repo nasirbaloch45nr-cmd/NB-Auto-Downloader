@@ -1,57 +1,57 @@
-// Extension install ya update hone par
+// Extension install setup
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('NB Auto Downloader installed.');
   chrome.storage.local.set({ isMonitoring: false });
 });
 
-// Popup ya content script se aane wale messages ko handle karna
+// Messages listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'downloadCurrentPage') {
-    // Current tab par media scan karne ke liye content script ko message bhejna
-    chrome.tabs.sendMessage(request.tabId, { action: 'scanAndDownload' }, (response) => {
-      if (chrome.runtime.lastError) {
-        // Agar content script inject nahi hai toh use inject karein
-        chrome.scripting.executeScript({
-          target: { tabId: request.tabId },
-          files: ['content.js']
-        }, () => {
-          if (chrome.runtime.lastError) {
-            sendResponse({ status: 'Page reload karke try karein!' });
-          } else {
-            // Dobara message bhejiye
-            chrome.tabs.sendMessage(request.tabId, { action: 'scanAndDownload' }, (res) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs || !tabs[0]) {
+        sendResponse({ status: 'No active tab!' });
+        return;
+      }
+      
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'scanAndDownload' }, (res) => {
+        if (chrome.runtime.lastError) {
+          // Programmatically script inject karke try karein
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            files: ['content.js']
+          }).then(() => {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'scanAndDownload' }, (res2) => {
               if (chrome.runtime.lastError) {
-                sendResponse({ status: 'Download failed: Page not supported' });
+                sendResponse({ status: 'Is page par reload zaroori hai!' });
               } else {
-                sendResponse(res || { status: 'Download triggered!' });
+                sendResponse(res2 || { status: 'Download Triggered!' });
               }
             });
-          }
-        });
-      } else {
-        sendResponse(response || { status: 'Download triggered!' });
-      }
+          }).catch(() => {
+            sendResponse({ status: 'Is page par run nahi ho sakta' });
+          });
+        } else {
+          sendResponse(res || { status: 'Download Triggered!' });
+        }
+      });
     });
-    return true; // Async response ke liye true return karna zaroori hai
-  } 
-  
-  else if (request.action === 'startMonitoring') {
-    chrome.storage.local.set({ isMonitoring: true }, () => {
-      sendResponse({ status: 'Monitoring Started' });
-    });
+    return true; // Async handle karne ke liye
+  }
+
+  if (request.action === 'startMonitoring') {
+    chrome.storage.local.set({ isMonitoring: true });
+    sendResponse({ status: 'Monitoring Started' });
     return true;
-  } 
-  
-  else if (request.action === 'stopMonitoring') {
-    chrome.storage.local.set({ isMonitoring: false }, () => {
-      sendResponse({ status: 'Monitoring Stopped' });
-    });
+  }
+
+  if (request.action === 'stopMonitoring') {
+    chrome.storage.local.set({ isMonitoring: false });
+    sendResponse({ status: 'Monitoring Stopped' });
     return true;
-  } 
-  
-  else if (request.action === 'resetHistory') {
-    // History ya downloaded items cache clear karne ki logic agar ho
-    sendResponse({ status: 'History cleared!' });
+  }
+
+  if (request.action === 'resetHistory') {
+    chrome.storage.local.set({ downloadedFiles: [] });
+    sendResponse({ status: 'History Cleared' });
     return true;
   }
 });
