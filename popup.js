@@ -1,134 +1,105 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>NB Auto Downloader</title>
-  <style>
-    body {
-      width: 280px;
-      padding: 15px;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: #11131e;
-      color: #ffffff;
-      margin: 0;
-    }
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 15px;
-      border-bottom: 1px solid #2a2e45;
-      padding-bottom: 10px;
-    }
-    .header img {
-      width: 32px;
-      height: 32px;
-      border-radius: 6px;
-    }
-    .header h3 {
-      margin: 0;
-      font-size: 16px;
-      color: #00d2ff;
-    }
-    .field-group {
-      margin-bottom: 12px;
-    }
-    label {
-      display: block;
-      font-size: 11px;
-      color: #a0a5c0;
-      margin-bottom: 4px;
-    }
-    input[type="text"], select {
-      width: 100%;
-      padding: 8px;
-      background: #1e2238;
-      border: 1px solid #343a5e;
-      border-radius: 6px;
-      color: #fff;
-      box-sizing: border-box;
-      font-size: 12px;
-    }
-    .checkbox-group {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 15px;
-    }
-    .checkbox-group label {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      cursor: pointer;
-      font-size: 12px;
-      color: #fff;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 8px;
-      border: none;
-      border-radius: 6px;
-      font-weight: bold;
-      font-size: 12px;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-    button:hover {
-      opacity: 0.9;
-    }
-    #downloadBtn {
-      background: #00d2ff;
-      color: #000;
-    }
-    #monitorBtn {
-      background: #2ecc71;
-      color: #fff;
-    }
-    #resetBtn {
-      background: #34495e;
-      color: #fff;
-    }
-    #status {
-      margin-top: 10px;
-      font-size: 11px;
-      color: #00d2ff;
-      text-align: center;
-      font-weight: 500;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <img src="icon.png" alt="Logo">
-    <h3>NB Auto Downloader</h3>
-  </div>
+document.addEventListener('DOMContentLoaded', () => {
+  const folderInput = document.getElementById('folderInput');
+  const dlVideos = document.getElementById('dlVideos');
+  const dlImages = document.getElementById('dlImages');
+  const intervalSelect = document.getElementById('intervalSelect');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const monitorBtn = document.getElementById('monitorBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const statusDiv = document.getElementById('status');
 
-  <div class="field-group">
-    <label for="folderInput">Save Folder (inside Downloads):</label>
-    <input type="text" id="folderInput" placeholder="GoogleFlow_Media">
-  </div>
+  // Storage se settings load karein
+  chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages', 'checkInterval', 'isMonitoring'], (res) => {
+    if (res.saveFolder && folderInput) folderInput.value = res.saveFolder;
+    if (res.dlVideos !== undefined && dlVideos) dlVideos.checked = res.dlVideos;
+    if (res.dlImages !== undefined && dlImages) dlImages.checked = res.dlImages;
+    if (res.checkInterval && intervalSelect) intervalSelect.value = res.checkInterval;
+    
+    if (res.isMonitoring && monitorBtn) {
+      monitorBtn.textContent = 'Stop Auto Monitoring';
+      monitorBtn.style.background = '#e74c3c';
+      if (statusDiv) statusDiv.textContent = 'Status: Monitoring Active...';
+    }
+  });
 
-  <div class="checkbox-group">
-    <label><input type="checkbox" id="dlVideos" checked> Videos (.mp4)</label>
-    <label><input type="checkbox" id="dlImages" checked> Images (.webp)</label>
-  </div>
+  // Settings save karein jab inputs change ho
+  function saveSettings() {
+    chrome.storage.local.set({
+      saveFolder: folderInput ? (folderInput.value.trim() || 'GoogleFlow_Media') : 'GoogleFlow_Media',
+      dlVideos: dlVideos ? dlVideos.checked : true,
+      dlImages: dlImages ? dlImages.checked : true,
+      checkInterval: intervalSelect ? parseInt(intervalSelect.value, 10) : 3000
+    });
+  }
 
-  <div class="field-group">
-    <label for="intervalSelect">Check Interval:</label>
-    <select id="intervalSelect">
-      <option value="2000">Every 2 Seconds</option>
-      <option value="3000" selected>Every 3 Seconds</option>
-      <option value="5000">Every 5 Seconds</option>
-      <option value="10000">Every 10 Seconds</option>
-    </select>
-  </div>
+  if (folderInput) folderInput.addEventListener('change', saveSettings);
+  if (dlVideos) dlVideos.addEventListener('change', saveSettings);
+  if (dlImages) dlImages.addEventListener('change', saveSettings);
+  if (intervalSelect) intervalSelect.addEventListener('change', saveSettings);
 
-  <button id="downloadBtn">Download Current Page</button>
-  <button id="monitorBtn">Start Auto Monitoring</button>
-  <button id="resetBtn">Reset History / Clear Log</button>
+  // Single page download button
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async () => {
+      saveSettings();
+      if (statusDiv) statusDiv.textContent = 'Status: Extracting media...';
 
-  <div id="status">Status: Ready</div>
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) {
+        if (statusDiv) statusDiv.textContent = 'Status: No active tab found!';
+        return;
+      }
 
-  <script src="popup.js"></script>
-</body>
-</html>
+      chrome.runtime.sendMessage({ action: 'downloadCurrentPage', tabId: tab.id }, (response) => {
+        if (chrome.runtime.lastError) {
+          if (statusDiv) statusDiv.textContent = 'Status: Page reload karke try karein!';
+        } else if (response && response.status) {
+          if (statusDiv) statusDiv.textContent = `Status: ${response.status}`;
+        }
+      });
+    });
+  }
+
+  // Start/Stop Monitoring button
+  if (monitorBtn) {
+    monitorBtn.addEventListener('click', async () => {
+      saveSettings();
+      const res = await chrome.storage.local.get(['isMonitoring']);
+      const newState = !res.isMonitoring;
+
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) {
+        if (statusDiv) statusDiv.textContent = 'Status: No active tab found!';
+        return;
+      }
+
+      if (newState) {
+        chrome.runtime.sendMessage({ action: 'startMonitoring', tabId: tab.id }, (response) => {
+          if (chrome.runtime.lastError) {
+            if (statusDiv) statusDiv.textContent = 'Status: Page reload karke try karein!';
+          } else {
+            chrome.storage.local.set({ isMonitoring: true });
+            monitorBtn.textContent = 'Stop Auto Monitoring';
+            monitorBtn.style.background = '#e74c3c';
+            if (statusDiv) statusDiv.textContent = 'Status: Monitoring Started!';
+          }
+        });
+      } else {
+        chrome.runtime.sendMessage({ action: 'stopMonitoring' }, (response) => {
+          chrome.storage.local.set({ isMonitoring: false });
+          monitorBtn.textContent = 'Start Auto Monitoring';
+          monitorBtn.style.background = '#2ecc71';
+          if (statusDiv) statusDiv.textContent = 'Status: Monitoring Stopped';
+        });
+      }
+    });
+  }
+
+  // Reset history button
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: 'resetHistory' }, (response) => {
+        if (statusDiv) statusDiv.textContent = 'Status: History cleared!';
+      });
+    });
+  }
+});
