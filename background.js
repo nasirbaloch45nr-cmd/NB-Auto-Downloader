@@ -137,3 +137,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+// File Name: background.js
+
+// Default settings aur counter state management
+const DEFAULT_SETTINGS = {
+    counterIndex: 1,
+    videoQuality: "720p",
+    imageQuality: "1k",
+    aspectRatio: "16:9", // Default YouTube ratio
+    projectName: "default-project"
+};
+
+// Function: Naya project shuru hone par ya manually reset karne par counter 1 karne ke liye
+async function resetCounterIfNeeded(newProjectName) {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(['currentProject', 'counterIndex'], (data) => {
+            if (data.currentProject !== newProjectName) {
+                // Agar project badal gaya hai, toh counter ko 1 par reset kar do
+                chrome.storage.local.set({
+                    currentProject: newProjectName,
+                    counterIndex: 1
+                }, () => {
+                    resolve(1);
+                });
+            } else {
+                // Agar wahi project hai, toh agla number do
+                let nextIndex = (data.counterIndex || 0) + 1;
+                chrome.storage.local.set({ counterIndex: nextIndex }, () => {
+                    resolve(nextIndex);
+                });
+            }
+        });
+    });
+}
