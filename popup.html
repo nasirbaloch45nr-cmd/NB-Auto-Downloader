@@ -132,3 +132,38 @@
   <script src="popup.js"></script>
 </body>
 </html>
+<!-- File Name: popup.html -->
+<div class="settings-container p-3 space-y-3">
+    <!-- Aspect Ratio Selection -->
+    <div class="setting-group">
+        <label class="text-xs font-semibold">Default Aspect Ratio</label>
+        <select id="aspectRatioSelect" class="w-full p-inputtext text-xs">
+            <option value="16:9">16:9 (YouTube)</option>
+            <option value="9:16">9:16 (TikTok / Shorts / Reels)</option>
+            <option value="1:1">1:1 (Square)</option>
+            <option value="4:3">4:3 (Standard)</option>
+        </select>
+    </div>
+
+    <!-- Video Quality Selection -->
+    <div class="setting-group">
+        <label class="text-xs font-semibold">Auto Download Quality (Video)</label>
+        <select id="videoQualitySelect" class="w-full p-inputtext text-xs">
+            <option value="720p">720p HD</option>
+            <option value="1080p">1080p Full HD</option>
+            <option value="4k">4K Ultra HD</option>
+        </select>
+    </div>
+
+    <!-- Image Quality Selection -->
+    <div class="setting-group">
+        <label class="text-xs font-semibold">Auto Download Quality (Image)</label>
+        <select id="imageQualitySelect" class="w-full p-inputtext text-xs">
+            <option value="1k">1K Standard</option>
+            <option value="2k">2K High Quality</option>
+            <option value="4k">4K Maximum</option>
+        </select>
+    </div>
+
+    <button id="saveSettingsBtn" class="p-button p-button-sm w-full mt-2">Save Settings</button>
+</div>
