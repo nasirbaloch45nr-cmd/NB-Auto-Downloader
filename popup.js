@@ -1,150 +1,99 @@
 document.addEventListener('DOMContentLoaded', () => {
-  // Load saved folder name
-  chrome.storage.local.get(['customFolder'], (data) => {
-    if (data.customFolder) {
-      document.getElementById('folderInput').value = data.customFolder;
-    } else {
-      document.getElementById('folderInput').value = 'GoogleFlow_Media';
-    }
-  });
-
-  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
-    if (response && response.isRunning) {
-      updateUIState(true);
-    }
-  });
-});
-
-// Save folder name on change
-document.getElementById('folderInput').addEventListener('input', (e) => {
-  const folderName = e.target.value.trim();
-  chrome.storage.local.set({ customFolder: folderName });
-});
-
-document.getElementById('downloadBtn').addEventListener('click', () => {
-  const statusDiv = document.getElementById('status');
-  statusDiv.textContent = 'Downloading current...';
-  chrome.runtime.sendMessage({ action: 'startMonitoring' });
-  setTimeout(() => {
-    statusDiv.textContent = 'Status: Done / Monitoring';
-  }, 1500);
-});
-
-document.getElementById('autoToggleBtn').addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
-    const isRunning = response ? response.isRunning : false;
-
-    if (!isRunning) {
-      chrome.runtime.sendMessage({ action: 'startMonitoring' }, () => {
-        updateUIState(true);
-      });
-    } else {
-      chrome.runtime.sendMessage({ action: 'stopMonitoring' }, () => {
-        updateUIState(false);
-      });
-    }
-  });
-});
-
-function updateUIState(isRunning) {
-  const toggleBtn = document.getElementById('autoToggleBtn');
+  const folderInput = document.getElementById('folderInput');
+  const dlVideos = document.getElementById('dlVideos');
+  const dlImages = document.getElementById('dlImages');
+  const intervalSelect = document.getElementById('intervalSelect');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const monitorBtn = document.getElementById('monitorBtn');
+  const resetBtn = document.getElementById('resetBtn');
   const statusDiv = document.getElementById('status');
 
-  if (isRunning) {
-    toggleBtn.textContent = 'Stop Auto Monitoring';
-    toggleBtn.classList.add('active');
-    statusDiv.textContent = 'Status: Background Live...';
-  } else {
-    toggleBtn.textContent = 'Start Auto Monitoring';
-    toggleBtn.classList.remove('active');
-    statusDiv.textContent = 'Status: Monitoring Stopped';
-  }
-}
-document.addEventListener('DOMContentLoaded', () => {
-  // Load saved settings
-  chrome.storage.local.get(['customFolder', 'dlVideos', 'dlImages', 'checkInterval'], (data) => {
-    document.getElementById('folderInput').value = data.customFolder || 'GoogleFlow_Media';
-    document.getElementById('dlVideos').checked = data.dlVideos !== false;
-    document.getElementById('dlImages').checked = data.dlImages !== false;
-    if (data.checkInterval) {
-      document.getElementById('intervalSelect').value = data.checkInterval;
+  // Storage se settings load karein
+  chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages', 'checkInterval', 'isMonitoring'], (res) => {
+    if (res.saveFolder) folderInput.value = res.saveFolder;
+    if (res.dlVideos !== undefined) dlVideos.checked = res.dlVideos;
+    if (res.dlImages !== undefined) dlImages.checked = res.dlImages;
+    if (res.checkInterval) intervalSelect.value = res.checkInterval;
+    
+    if (res.isMonitoring) {
+      monitorBtn.textContent = 'Stop Auto Monitoring';
+      monitorBtn.style.background = '#e74c3c';
+      statusDiv.textContent = 'Status: Monitoring Active...';
     }
   });
 
-  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
-    if (response && response.isRunning) {
-      updateUIState(true);
-    }
-  });
-});
-
-// Save settings dynamically on change
-document.getElementById('folderInput').addEventListener('input', (e) => {
-  chrome.storage.local.set({ customFolder: e.target.value.trim() });
-});
-
-document.getElementById('dlVideos').addEventListener('change', (e) => {
-  chrome.storage.local.set({ dlVideos: e.target.checked });
-});
-
-document.getElementById('dlImages').addEventListener('change', (e) => {
-  chrome.storage.local.set({ dlImages: e.target.checked });
-});
-
-document.getElementById('intervalSelect').addEventListener('change', (e) => {
-  const interval = parseInt(e.target.value);
-  chrome.storage.local.set({ checkInterval: interval });
-  // Notify background service worker to update interval if running
-  chrome.runtime.sendMessage({ action: 'updateInterval', interval: interval });
-});
-
-document.getElementById('downloadBtn').addEventListener('click', () => {
-  const statusDiv = document.getElementById('status');
-  statusDiv.textContent = 'Downloading current...';
-  chrome.runtime.sendMessage({ action: 'startMonitoring' });
-  setTimeout(() => {
-    statusDiv.textContent = 'Status: Done / Monitoring';
-  }, 1500);
-});
-
-document.getElementById('autoToggleBtn').addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
-    const isRunning = response ? response.isRunning : false;
-
-    if (!isRunning) {
-      chrome.runtime.sendMessage({ action: 'startMonitoring' }, () => {
-        updateUIState(true);
-      });
-    } else {
-      chrome.runtime.sendMessage({ action: 'stopMonitoring' }, () => {
-        updateUIState(false);
-      });
-    }
-  });
-});
-
-document.getElementById('resetBtn').addEventListener('click', () => {
-  if (confirm('Are you sure you want to clear download history log?')) {
-    chrome.storage.local.set({ downloadedHistory: [] }, () => {
-      document.getElementById('status').textContent = 'History Cleared!';
-      setTimeout(() => {
-        document.getElementById('status').textContent = 'Status: Ready';
-      }, 1500);
+  // Settings save karein jab inputs change ho
+  function saveSettings() {
+    chrome.storage.local.set({
+      saveFolder: folderInput.value.trim() || 'GoogleFlow_Media',
+      dlVideos: dlVideos.checked,
+      dlImages: dlImages.checked,
+      checkInterval: parseInt(intervalSelect.value, 10)
     });
   }
+
+  folderInput.addEventListener('change', saveSettings);
+  dlVideos.addEventListener('change', saveSettings);
+  dlImages.addEventListener('change', saveSettings);
+  intervalSelect.addEventListener('change', saveSettings);
+
+  // Single page download button
+  downloadBtn.addEventListener('click', async () => {
+    saveSettings();
+    statusDiv.textContent = 'Status: Extracting media...';
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      statusDiv.textContent = 'Status: No active tab found!';
+      return;
+    }
+
+    chrome.runtime.sendMessage({ action: 'downloadCurrentPage', tabId: tab.id }, (response) => {
+      if (chrome.runtime.lastError) {
+        statusDiv.textContent = 'Status: Page reload karke try karein!';
+      } else if (response && response.status) {
+        statusDiv.textContent = `Status: ${response.status}`;
+      }
+    });
+  });
+
+  // Start/Stop Monitoring button
+  monitorBtn.addEventListener('click', async () => {
+    saveSettings();
+    const res = await chrome.storage.local.get(['isMonitoring']);
+    const newState = !res.isMonitoring;
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      statusDiv.textContent = 'Status: No active tab found!';
+      return;
+    }
+
+    if (newState) {
+      chrome.runtime.sendMessage({ action: 'startMonitoring', tabId: tab.id }, (response) => {
+        if (chrome.runtime.lastError) {
+          statusDiv.textContent = 'Status: Page reload karke try karein!';
+        } else {
+          chrome.storage.local.set({ isMonitoring: true });
+          monitorBtn.textContent = 'Stop Auto Monitoring';
+          monitorBtn.style.background = '#e74c3c';
+          statusDiv.textContent = 'Status: Monitoring Started!';
+        }
+      });
+    } else {
+      chrome.runtime.sendMessage({ action: 'stopMonitoring' }, (response) => {
+        chrome.storage.local.set({ isMonitoring: false });
+        monitorBtn.textContent = 'Start Auto Monitoring';
+        monitorBtn.style.background = '#2ecc71';
+        statusDiv.textContent = 'Status: Monitoring Stopped';
+      });
+    }
+  });
+
+  // Reset history button
+  resetBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'resetHistory' }, (response) => {
+      statusDiv.textContent = 'Status: History cleared!';
+    });
+  });
 });
-
-function updateUIState(isRunning) {
-  const toggleBtn = document.getElementById('autoToggleBtn');
-  const statusDiv = document.getElementById('status');
-
-  if (isRunning) {
-    toggleBtn.textContent = 'Stop Auto Monitoring';
-    toggleBtn.classList.add('active');
-    statusDiv.textContent = 'Status: Background Live...';
-  } else {
-    toggleBtn.textContent = 'Start Auto Monitoring';
-    toggleBtn.classList.remove('active');
-    statusDiv.textContent = 'Status: Monitoring Stopped';
-  }
-}
