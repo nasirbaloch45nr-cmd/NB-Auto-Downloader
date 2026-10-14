@@ -1,52 +1,57 @@
-function extractMediaUrls() {
-  const foundItems = [];
-  const addedUrls = new Set();
-  let imgCounter = 1;
-  let vidCounter = 1;
+// Extension install ya update hone par
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('NB Auto Downloader installed.');
+  chrome.storage.local.set({ isMonitoring: false });
+});
 
-  function getElementTitle(el, type) {
-    let text = el.getAttribute('alt') || 
-               el.getAttribute('title') || 
-               el.getAttribute('aria-label') || 
-               el.dataset.prompt || '';
-
-    // Agar text generic ho ya khali ho, toh clean professional numbering/fallback use karein
-    if (!text || text.includes("Tile displaying") || text.length < 3) {
-      return type === 'video' ? `Flow_Video_${vidCounter++}` : `Flow_Image_${imgCounter++}`;
-    }
-    
-    // Agar lamba prompt ho toh usko saaf short title bana lein
-    return text.substring(0, 40).trim();
-  }
-
-  // 1. Detect Videos
-  document.querySelectorAll('video').forEach(video => {
-    let src = video.src || video.currentSrc;
-    let title = getElementTitle(video, 'video');
-    
-    if (src && !addedUrls.has(src)) {
-      addedUrls.add(src);
-      foundItems.push({ url: src, type: 'video', title: title });
-    }
-    video.querySelectorAll('source').forEach(source => {
-      if (source.src && !addedUrls.has(source.src)) {
-        addedUrls.add(source.src);
-        foundItems.push({ url: source.src, type: 'video', title: title });
+// Popup ya content script se aane wale messages ko handle karna
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'downloadCurrentPage') {
+    // Current tab par media scan karne ke liye content script ko message bhejna
+    chrome.tabs.sendMessage(request.tabId, { action: 'scanAndDownload' }, (response) => {
+      if (chrome.runtime.lastError) {
+        // Agar content script inject nahi hai toh use inject karein
+        chrome.scripting.executeScript({
+          target: { tabId: request.tabId },
+          files: ['content.js']
+        }, () => {
+          if (chrome.runtime.lastError) {
+            sendResponse({ status: 'Page reload karke try karein!' });
+          } else {
+            // Dobara message bhejiye
+            chrome.tabs.sendMessage(request.tabId, { action: 'scanAndDownload' }, (res) => {
+              if (chrome.runtime.lastError) {
+                sendResponse({ status: 'Download failed: Page not supported' });
+              } else {
+                sendResponse(res || { status: 'Download triggered!' });
+              }
+            });
+          }
+        });
+      } else {
+        sendResponse(response || { status: 'Download triggered!' });
       }
     });
-  });
-
-  // 2. Detect Images
-  document.querySelectorAll('img').forEach(img => {
-    let src = img.src || (img.dataset && img.dataset.src);
-    let title = getElementTitle(img, 'image');
-    if (src && !addedUrls.has(src)) {
-      addedUrls.add(src);
-      foundItems.push({ url: src, type: 'image', title: title });
-    }
-  });
-
-  return foundItems.filter(item => 
-    item.url.startsWith('http') || item.url.startsWith('blob:') || item.url.startsWith('data:')
-  );
-}
+    return true; // Async response ke liye true return karna zaroori hai
+  } 
+  
+  else if (request.action === 'startMonitoring') {
+    chrome.storage.local.set({ isMonitoring: true }, () => {
+      sendResponse({ status: 'Monitoring Started' });
+    });
+    return true;
+  } 
+  
+  else if (request.action === 'stopMonitoring') {
+    chrome.storage.local.set({ isMonitoring: false }, () => {
+      sendResponse({ status: 'Monitoring Stopped' });
+    });
+    return true;
+  } 
+  
+  else if (request.action === 'resetHistory') {
+    // History ya downloaded items cache clear karne ki logic agar ho
+    sendResponse({ status: 'History cleared!' });
+    return true;
+  }
+});
