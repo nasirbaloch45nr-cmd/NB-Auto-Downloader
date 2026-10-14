@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const resetBtn = document.getElementById('resetBtn');
   const statusDiv = document.getElementById('status');
 
-  // Storage se settings load karein
   chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages', 'checkInterval', 'isMonitoring'], (res) => {
     if (res.saveFolder && folderInput) folderInput.value = res.saveFolder;
     if (res.dlVideos !== undefined && dlVideos) dlVideos.checked = res.dlVideos;
@@ -22,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Settings save karein jab inputs change ho
   function saveSettings() {
     chrome.storage.local.set({
       saveFolder: folderInput ? (folderInput.value.trim() || 'GoogleFlow_Media') : 'GoogleFlow_Media',
@@ -37,11 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dlImages) dlImages.addEventListener('change', saveSettings);
   if (intervalSelect) intervalSelect.addEventListener('change', saveSettings);
 
-  // Single page download button
   if (downloadBtn) {
     downloadBtn.addEventListener('click', async () => {
       saveSettings();
-      if (statusDiv) statusDiv.textContent = 'Status: Extracting media...';
+      if (statusDiv) statusDiv.textContent = 'Status: Extracting Google Flow media...';
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab) {
@@ -59,7 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Start/Stop Monitoring button
   if (monitorBtn) {
     monitorBtn.addEventListener('click', async () => {
       saveSettings();
@@ -73,32 +69,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (newState) {
-        chrome.runtime.sendMessage({ action: 'startMonitoring', tabId: tab.id }, (response) => {
-          if (chrome.runtime.lastError) {
-            if (statusDiv) statusDiv.textContent = 'Status: Page reload karke try karein!';
-          } else {
-            chrome.storage.local.set({ isMonitoring: true });
-            monitorBtn.textContent = 'Stop Auto Monitoring';
-            monitorBtn.style.background = '#e74c3c';
-            if (statusDiv) statusDiv.textContent = 'Status: Monitoring Started!';
-          }
-        });
+        chrome.storage.local.set({ isMonitoring: true });
+        monitorBtn.textContent = 'Stop Auto Monitoring';
+        monitorBtn.style.background = '#e74c3c';
+        if (statusDiv) statusDiv.textContent = 'Status: Monitoring Started!';
+
+        chrome.runtime.sendMessage({ action: 'startMonitoring', tabId: tab.id });
       } else {
-        chrome.runtime.sendMessage({ action: 'stopMonitoring' }, (response) => {
-          chrome.storage.local.set({ isMonitoring: false });
-          monitorBtn.textContent = 'Start Auto Monitoring';
-          monitorBtn.style.background = '#2ecc71';
-          if (statusDiv) statusDiv.textContent = 'Status: Monitoring Stopped';
-        });
+        chrome.storage.local.set({ isMonitoring: false });
+        monitorBtn.textContent = 'Start Auto Monitoring';
+        monitorBtn.style.background = '#2ecc71';
+        if (statusDiv) statusDiv.textContent = 'Status: Monitoring Stopped';
+
+        chrome.runtime.sendMessage({ action: 'stopMonitoring' });
       }
     });
   }
 
-  // Reset history button
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       chrome.runtime.sendMessage({ action: 'resetHistory' }, (response) => {
-        if (statusDiv) statusDiv.textContent = 'Status: History cleared!';
+        if (statusDiv) statusDiv.textContent = 'Status: History & Sequence reset!';
       });
     });
   }
