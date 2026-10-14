@@ -1,57 +1,132 @@
-// Extension install setup
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({ isMonitoring: false });
+let downloadedUrls = new Set();
+let clipSequenceCounter = 1;
+
+// Load sequence & history from local storage
+chrome.storage.local.get(['downloadedUrls', 'clipSequenceCounter'], (res) => {
+  if (res.downloadedUrls) downloadedUrls = new Set(res.downloadedUrls);
+  if (res.clipSequenceCounter) clipSequenceCounter = res.clipSequenceCounter;
 });
 
-// Messages listener
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'downloadCurrentPage') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || !tabs[0]) {
-        sendResponse({ status: 'No active tab!' });
+function getFormattedDateTime() {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  const hh = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  return `${dd}${mm}${yy}_${hh}${min}${ss}`;
+}
+
+function processAndDownloadMedia(mediaList, saveFolder) {
+  if (!mediaList || mediaList.length === 0) return 0;
+
+  let downloadedCount = 0;
+
+  mediaList.forEach((item) => {
+    if (downloadedUrls.has(item.url)) return; // Avoid duplicate download
+
+    downloadedUrls.add(item.url);
+    downloadedCount++;
+
+    const seqStr = String(clipSequenceCounter).padStart(3, '0');
+    const dateTimeStr = getFormattedDateTime();
+    const ext = item.isVideo ? 'mp4' : 'webp';
+    const folder = saveFolder ? `${saveFolder}/` : 'GoogleFlow_Media/';
+
+    // Structure: Folder / Clip_001_PromptTitle_DDMMYY_HHMMSS.ext
+    const filename = `${folder}Clip_${seqStr}_${item.promptText}_${dateTimeStr}.${ext}`;
+
+    clipSequenceCounter++;
+
+    chrome.downloads.download({
+      url: item.url,
+      filename: filename,
+      conflictAction: 'uniquify'
+    });
+  });
+
+  // Save progress
+  chrome.storage.local.set({
+    downloadedUrls: Array.from(downloadedUrls),
+    clipSequenceCounter: clipSequenceCounter
+  });
+
+  return downloadedCount;
+}
+
+// Background monitoring loop
+let monitoringIntervalId = null;
+
+function startAutoMonitoring(tabId) {
+  if (monitoringIntervalId) clearInterval(monitoringIntervalId);
+
+  monitoringIntervalId = setInterval(() => {
+    chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
+      if (!settings.isMonitoring) {
+        clearInterval(monitoringIntervalId);
+        monitoringIntervalId = null;
         return;
       }
-      
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'scanAndDownload' }, (res) => {
-        if (chrome.runtime.lastError) {
-          // Programmatically script inject karke try karein
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            files: ['content.js']
-          }).then(() => {
-            chrome.tabs.sendMessage(tabs[0].id, { action: 'scanAndDownload' }, (res2) => {
-              if (chrome.runtime.lastError) {
-                sendResponse({ status: 'Is page par reload zaroori hai!' });
-              } else {
-                sendResponse(res2 || { status: 'Download Triggered!' });
-              }
-            });
-          }).catch(() => {
-            sendResponse({ status: 'Is page par run nahi ho sakta' });
-          });
-        } else {
-          sendResponse(res || { status: 'Download Triggered!' });
+
+      chrome.tabs.sendMessage(tabId, {
+        action: 'scanAndDownload',
+        dlVideos: settings.dlVideos ?? true,
+        dlImages: settings.dlImages ?? true
+      }, (response) => {
+        if (chrome.runtime.lastError) return;
+        if (response && response.mediaList) {
+          processAndDownloadMedia(response.mediaList, settings.saveFolder);
         }
       });
     });
-    return true; // Async handle karne ke liye
+  }, 3000); // Check every 3 seconds
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'downloadCurrentPage') {
+    chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages'], (settings) => {
+      chrome.tabs.sendMessage(request.tabId, {
+        action: 'scanAndDownload',
+        dlVideos: settings.dlVideos ?? true,
+        dlImages: settings.dlImages ?? true
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ status: 'Page reload karke try karein!' });
+        } else if (response && response.mediaList) {
+          const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
+          sendResponse({ status: count > 0 ? `${count} new clips downloaded!` : 'No new complete media found' });
+        } else {
+          sendResponse({ status: 'No complete media found' });
+        }
+      });
+    });
+    return true;
   }
 
   if (request.action === 'startMonitoring') {
-    chrome.storage.local.set({ isMonitoring: true });
-    sendResponse({ status: 'Monitoring Started' });
+    startAutoMonitoring(request.tabId);
+    sendResponse({ status: 'Monitoring Active...' });
     return true;
   }
 
   if (request.action === 'stopMonitoring') {
-    chrome.storage.local.set({ isMonitoring: false });
+    if (monitoringIntervalId) {
+      clearInterval(monitoringIntervalId);
+      monitoringIntervalId = null;
+    }
     sendResponse({ status: 'Monitoring Stopped' });
     return true;
   }
 
   if (request.action === 'resetHistory') {
-    chrome.storage.local.set({ downloadedFiles: [] });
-    sendResponse({ status: 'History Cleared' });
+    downloadedUrls.clear();
+    clipSequenceCounter = 1;
+    chrome.storage.local.set({
+      downloadedUrls: [],
+      clipSequenceCounter: 1
+    });
+    sendResponse({ status: 'History & sequence reset!' });
     return true;
   }
 });
