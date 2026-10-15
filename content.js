@@ -28,6 +28,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scanAndDownload') {
     const rawList = [];
 
+    // Helper function to get exact element screen position
+    function getPos(elem) {
+      const rect = elem.getBoundingClientRect();
+      return {
+        top: rect.top + window.scrollY,
+        left: rect.left + window.scrollX
+      };
+    }
+
     // Videos scan
     if (request.dlVideos) {
       const videos = document.querySelectorAll('video');
@@ -35,8 +44,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (vid.src && vid.src.startsWith('http')) {
           const parentCard = vid.closest('[class*="card"], [class*="item"], div') || vid.parentElement;
           const rawText = parentCard ? parentCard.innerText : '';
-          
-          // Check if card is currently generating/loading
+          const pos = getPos(vid);
+
           const isGenerating = parentCard ? (
             parentCard.innerText.toLowerCase().includes('generating') || 
             parentCard.querySelector('[class*="spinner"], [class*="loading"], [class*="progress"]') !== null
@@ -46,7 +55,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             url: vid.src,
             isVideo: true,
             promptText: cleanPromptText(rawText),
-            isGenerating: isGenerating
+            isGenerating: isGenerating,
+            top: pos.top,
+            left: pos.left
           });
         }
       });
@@ -59,6 +70,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (img.src && img.src.startsWith('http') && !img.src.includes('avatar') && !img.src.includes('icon')) {
           const parentCard = img.closest('[class*="card"], [class*="item"], div') || img.parentElement;
           const rawText = img.alt || (parentCard ? parentCard.innerText : '');
+          const pos = getPos(img);
 
           const isGenerating = parentCard ? (
             parentCard.innerText.toLowerCase().includes('generating') || 
@@ -69,16 +81,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             url: img.src,
             isVideo: false,
             promptText: cleanPromptText(rawText),
-            isGenerating: isGenerating
+            isGenerating: isGenerating,
+            top: pos.top,
+            left: pos.left
           });
         }
       });
     }
 
-    // Chronological order (Bottom to Top)
-    const orderedList = Array.from(rawList).reverse();
+    // PERFECT GRID SORTING (Bottom-to-Top Y, Left-to-Right X)
+    // Sabse pehle neeche wali row (Top maximum) aur us row me left-to-right (Left minimum)
+    rawList.sort((a, b) => {
+      // Direct Y-axis comparison with 50px row-tolerance gap
+      if (Math.abs(b.top - a.top) > 50) {
+        return b.top - a.top; // Higher Y (bottom-most) comes first
+      }
+      return a.left - b.left; // Inside same row, Left to Right
+    });
 
-    sendResponse({ mediaList: orderedList });
+    sendResponse({ mediaList: rawList });
   }
   return true;
 });
