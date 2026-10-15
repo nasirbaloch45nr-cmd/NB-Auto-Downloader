@@ -3,10 +3,8 @@
 function cleanPromptText(text) {
   if (!text) return 'Prompt';
 
-  // Step 1: Extra whitespace saaf karein
   let clean = text.trim();
 
-  // Step 2: Google Flow ke common UI icons/button words ko remove karein
   const garbageWords = [
     /play_circle/gi, /360p/gi, /720p/gi, /1080p/gi,
     /favoriteredo/gi, /redomor/gi, /more_vert/gi, /download/gi,
@@ -17,31 +15,27 @@ function cleanPromptText(text) {
     clean = clean.replace(pattern, '');
   });
 
-  // Step 3: Special characters mita kar spaces ko underscores banayein
   clean = clean
-    .replace(/[^a-zA-Z0-9\s_-]/g, '') // sirf safe characters rakhein
-    .replace(/\s+/g, '_')             // spaces -> _
-    .replace(/_+/g, '_')              // double __ -> _
-    .replace(/^_+|_+$/g, '');         // shuru/aakhir ke _ mitaayein
+    .replace(/[^a-zA-Z0-9\s_-]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
 
-  // Pehle 40 characters lein taake filename zyada lamba na ho
   return clean.slice(0, 40) || 'Clip';
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scanAndDownload') {
-    const mediaList = [];
-    
-    // Videos scan karein
+    const rawList = [];
+
+    // Videos scan
     if (request.dlVideos) {
       const videos = document.querySelectorAll('video');
       videos.forEach((vid) => {
         if (vid.src && vid.src.startsWith('http')) {
-          // Nearest container se prompt text dhoondna
           const parentCard = vid.closest('[class*="card"], [class*="item"], div') || vid.parentElement;
           const rawText = parentCard ? parentCard.innerText : '';
-          
-          mediaList.push({
+          rawList.push({
             url: vid.src,
             isVideo: true,
             promptText: cleanPromptText(rawText)
@@ -50,15 +44,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
-    // Images scan karein
+    // Images scan
     if (request.dlImages) {
       const images = document.querySelectorAll('img');
       images.forEach((img) => {
         if (img.src && img.src.startsWith('http') && !img.src.includes('avatar') && !img.src.includes('icon')) {
           const parentCard = img.closest('[class*="card"], [class*="item"], div') || img.parentElement;
-          const rawText = parentCard ? parentCard.innerText : '';
-
-          mediaList.push({
+          const rawText = img.alt || (parentCard ? parentCard.innerText : '');
+          rawList.push({
             url: img.src,
             isVideo: false,
             promptText: cleanPromptText(rawText)
@@ -67,7 +60,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
-    sendResponse({ mediaList: mediaList });
+    // Page ke bottom-most (sabse pehle bane clips) ko sequence order mein lane ke liye reverse sorting
+    const orderedList = Array.from(rawList).reverse();
+
+    sendResponse({ mediaList: orderedList });
   }
   return true;
 });
