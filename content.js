@@ -41,7 +41,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             parentCard.querySelector('[class*="spinner"], [class*="loading"], [class*="progress"]') !== null
           ) : false;
 
-          // Unique DOM node identifier ya index taake original flow order maintain rahay
           rawList.push({
             url: vid.src,
             isVideo: true,
@@ -77,8 +76,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
-    // Google Flow ke natural feed order ko strictly follow karne ke liye 
-    // pehle banne wale items ko pehle process karna (Original DOM appearance order)
     sendResponse({ mediaList: rawList });
   }
   return true;
