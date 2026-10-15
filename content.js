@@ -25,10 +25,9 @@ function cleanPromptText(text) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'scanAndDownload') {
+  if (request.action === 'scanAndDescription' || request.action === 'scanAndDownload') {
     const rawList = [];
 
-    // Helper function to get exact element screen position
     function getPos(elem) {
       const rect = elem.getBoundingClientRect();
       return {
@@ -89,14 +88,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
-    // PERFECT GRID SORTING (Bottom-to-Top Y, Left-to-Right X)
-    // Sabse pehle neeche wali row (Top maximum) aur us row me left-to-right (Left minimum)
+    // EXACT VISUAL SCREEN ORDER SORTING (Top-to-Bottom, Left-to-Right)
+    // Yaani screen par jo sabse upar hai (jaise Z/Top row), wahan se shuru karega 
+    // aur neeche ki taraf (A tak) bilkul tarteeb se chalega.
     rawList.sort((a, b) => {
-      // Direct Y-axis comparison with 50px row-tolerance gap
-      if (Math.abs(b.top - a.top) > 50) {
-        return b.top - a.top; // Higher Y (bottom-most) comes first
+      // Agar vertical gap 40px se zyada hai, toh jo upar hai (chhota top) woh pehle aayega
+      if (Math.abs(a.top - b.top) > 40) {
+        return a.top - b.top; 
       }
-      return a.left - b.left; // Inside same row, Left to Right
+      // Agar same row mein hain, toh Left to Right (A se Z ki taraf)
+      return a.left - b.left;
     });
 
     sendResponse({ mediaList: rawList });
