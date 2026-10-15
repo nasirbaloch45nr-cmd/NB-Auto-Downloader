@@ -4,27 +4,38 @@
   <meta charset="UTF-8">
   <title>NB Auto Downloader</title>
   <style>
-    body {
-      width: 320px;
-      font-family: Arial, sans-serif;
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background-color: #121824;
       color: #ffffff;
-      margin: 0;
-      padding: 12px;
+      box-sizing: border-box;
+    }
+    .container {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: 100%;
+      box-sizing: border-box;
     }
     .header {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: bold;
       color: #00d2ff;
-      margin-bottom: 8px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1e293b;
     }
     .version-badge {
-      font-size: 10px;
+      font-size: 11px;
       background: #1e293b;
-      padding: 2px 6px;
+      padding: 3px 8px;
       border-radius: 4px;
       color: #94a3b8;
       border: 1px solid #334155;
@@ -33,108 +44,138 @@
       display: none;
       background: #059669;
       color: #ffffff;
-      padding: 6px 10px;
-      border-radius: 4px;
-      font-size: 11px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
       font-weight: bold;
       text-align: center;
-      margin-bottom: 10px;
       cursor: pointer;
     }
     .section-title {
       font-size: 11px;
       text-transform: uppercase;
       color: #8a99ad;
-      margin-top: 10px;
-      margin-bottom: 4px;
       font-weight: bold;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .card {
+      background: #1a2332;
+      border: 1px solid #2a3547;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
     input[type="text"], select {
       width: 100%;
-      padding: 6px 8px;
-      border-radius: 4px;
+      padding: 8px 10px;
+      border-radius: 6px;
       border: 1px solid #2a3547;
-      background: #1a2332;
+      background: #0f172a;
       color: #fff;
-      font-size: 12px;
+      font-size: 13px;
       box-sizing: border-box;
-      margin-bottom: 8px;
+    }
+    input[type="text"]:focus, select:focus {
+      outline: 1px solid #00d2ff;
     }
     .btn {
       width: 100%;
-      padding: 8px;
+      padding: 10px;
       border: none;
-      border-radius: 4px;
+      border-radius: 6px;
       font-weight: bold;
       cursor: pointer;
-      margin-top: 6px;
-      font-size: 12px;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+    .btn:hover {
+      opacity: 0.9;
     }
     .btn-primary { background: #00d2ff; color: #000; }
     .btn-success { background: #10b981; color: #fff; }
     .btn-danger { background: #ef4444; color: #fff; }
     .btn-secondary { background: #374151; color: #fff; }
     .status {
-      margin-top: 10px;
-      font-size: 11px;
+      font-size: 12px;
       color: #a0aec0;
       text-align: center;
+      padding: 6px;
+      background: #0f172a;
+      border-radius: 6px;
+      border: 1px solid #1e293b;
     }
     .checkbox-group {
       display: flex;
-      gap: 12px;
-      font-size: 12px;
-      margin-bottom: 8px;
+      gap: 16px;
+      font-size: 13px;
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
 
-  <div class="header">
-    <span>👑 NB Auto Downloader</span>
-    <span class="version-badge" id="appVersion">v1.1</span>
+  <div class="container">
+    <div class="header">
+      <span>👑 NB Auto Downloader</span>
+      <span class="version-badge" id="appVersion">v1.2</span>
+    </div>
+
+    <div id="updateBanner" class="update-banner">
+      ⚡ New Update Available! Click to Sync
+    </div>
+
+    <div class="card">
+      <div class="section-title">Save Folder & Project</div>
+      <input type="text" id="saveFolder" value="GoogleFlow_Media" placeholder="Folder Name">
+
+      <div class="checkbox-group">
+        <label><input type="checkbox" id="dlVideos" checked> Videos (.mp4)</label>
+        <label><input type="checkbox" id="dlImages" checked> Images (.webp)</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Media Controls</div>
+      
+      <label style="font-size: 11px; color: #a0aec0;">Aspect Ratio:</label>
+      <select id="aspectRatioSelect">
+        <option value="16:9">16:9 (YouTube)</option>
+        <option value="9:16">9:16 (TikTok / Shorts)</option>
+        <option value="1:1">1:1 (Square)</option>
+        <option value="4:3">4:3 (Standard)</option>
+      </select>
+
+      <label style="font-size: 11px; color: #a0aec0;">Video Quality:</label>
+      <select id="videoQualitySelect">
+        <option value="720p">720p HD</option>
+        <option value="1080p">1080p Full HD</option>
+      </select>
+
+      <label style="font-size: 11px; color: #a0aec0;">Image Quality:</label>
+      <select id="imageQualitySelect">
+        <option value="1k">1K Standard</option>
+        <option value="2k">2K High Quality</option>
+      </select>
+    </div>
+
+    <div class="card" style="margin-top: auto;">
+      <div class="section-title">Actions</div>
+      <button id="downloadBtn" class="btn btn-primary">Download Current Page</button>
+      <button id="monitorBtn" class="btn btn-success">Start Auto Monitoring</button>
+      <button id="resetProjectBtn" class="btn btn-secondary">⚡ New Project (Reset Counter to 001)</button>
+      <button id="clearLogBtn" class="btn btn-danger">Reset History / Clear Log</button>
+    </div>
+
+    <div class="status" id="statusText">Status: Ready</div>
   </div>
-
-  <div id="updateBanner" class="update-banner">
-    ⚡ New Update Available! Click to Sync
-  </div>
-
-  <div class="section-title">Save Folder & Project</div>
-  <input type="text" id="saveFolder" value="GoogleFlow_Media" placeholder="Folder Name">
-
-  <div class="checkbox-group">
-    <label><input type="checkbox" id="dlVideos" checked> Videos (.mp4)</label>
-    <label><input type="checkbox" id="dlImages" checked> Images (.webp)</label>
-  </div>
-
-  <div class="section-title">Media Controls</div>
-  <label style="font-size: 11px;">Aspect Ratio:</label>
-  <select id="aspectRatioSelect">
-    <option value="16:9">16:9 (YouTube)</option>
-    <option value="9:16">9:16 (TikTok / Shorts)</option>
-    <option value="1:1">1:1 (Square)</option>
-    <option value="4:3">4:3 (Standard)</option>
-  </select>
-
-  <label style="font-size: 11px;">Video Quality:</label>
-  <select id="videoQualitySelect">
-    <option value="720p">720p HD</option>
-    <option value="1080p">1080p Full HD</option>
-  </select>
-
-  <label style="font-size: 11px;">Image Quality:</label>
-  <select id="imageQualitySelect">
-    <option value="1k">1K Standard</option>
-    <option value="2k">2K High Quality</option>
-  </select>
-
-  <div class="section-title">Actions</div>
-  <button id="downloadBtn" class="btn btn-primary">Download Current Page</button>
-  <button id="monitorBtn" class="btn btn-success">Start Auto Monitoring</button>
-  <button id="resetProjectBtn" class="btn btn-secondary">⚡ New Project (Reset Counter to 001)</button>
-  <button id="clearLogBtn" class="btn btn-danger">Reset History / Clear Log</button>
-
-  <div class="status" id="statusText">Status: Ready</div>
 
   <script src="popup.js"></script>
 </body>
