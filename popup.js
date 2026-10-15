@@ -1,128 +1,100 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const folderInput = document.getElementById('folderInput');
-  const dlVideos = document.getElementById('dlVideos');
-  const dlImages = document.getElementById('dlImages');
-  const intervalSelect = document.getElementById('intervalSelect');
+  const saveFolderInput = document.getElementById('saveFolder');
+  const dlVideosInput = document.getElementById('dlVideos');
+  const dlImagesInput = document.getElementById('dlImages');
+  const aspectRatioSelect = document.getElementById('aspectRatioSelect');
+  const videoQualitySelect = document.getElementById('videoQualitySelect');
+  const imageQualitySelect = document.getElementById('imageQualitySelect');
+
   const downloadBtn = document.getElementById('downloadBtn');
   const monitorBtn = document.getElementById('monitorBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const statusDiv = document.getElementById('status');
+  const resetProjectBtn = document.getElementById('resetProjectBtn');
+  const clearLogBtn = document.getElementById('clearLogBtn');
+  const statusText = document.getElementById('statusText');
 
-  chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages', 'checkInterval', 'isMonitoring'], (res) => {
-    if (res.saveFolder && folderInput) folderInput.value = res.saveFolder;
-    if (res.dlVideos !== undefined && dlVideos) dlVideos.checked = res.dlVideos;
-    if (res.dlImages !== undefined && dlImages) dlImages.checked = res.dlImages;
-    if (res.checkInterval && intervalSelect) intervalSelect.value = res.checkInterval;
-    
-    if (res.isMonitoring && monitorBtn) {
+  // Saved settings load karein
+  chrome.storage.local.get([
+    'saveFolder', 'dlVideos', 'dlImages',
+    'aspectRatio', 'videoQuality', 'imageQuality', 'isMonitoring'
+  ], (res) => {
+    if (res.saveFolder) saveFolderInput.value = res.saveFolder;
+    if (res.dlVideos !== undefined) dlVideosInput.checked = res.dlVideos;
+    if (res.dlImages !== undefined) dlImagesInput.checked = res.dlImages;
+    if (res.aspectRatio) aspectRatioSelect.value = res.aspectRatio;
+    if (res.videoQuality) videoQualitySelect.value = res.videoQuality;
+    if (res.imageQuality) imageQualitySelect.value = res.imageQuality;
+
+    if (res.isMonitoring) {
       monitorBtn.textContent = 'Stop Auto Monitoring';
-      monitorBtn.style.background = '#e74c3c';
-      if (statusDiv) statusDiv.textContent = 'Status: Monitoring Active...';
+      monitorBtn.className = 'btn btn-danger';
+      statusText.textContent = 'Status: Monitoring Active...';
     }
   });
 
+  // Settings update hone par auto-save karein
   function saveSettings() {
     chrome.storage.local.set({
-      saveFolder: folderInput ? (folderInput.value.trim() || 'GoogleFlow_Media') : 'GoogleFlow_Media',
-      dlVideos: dlVideos ? dlVideos.checked : true,
-      dlImages: dlImages ? dlImages.checked : true,
-      checkInterval: intervalSelect ? parseInt(intervalSelect.value, 10) : 3000
+      saveFolder: saveFolderInput.value.trim() || 'GoogleFlow_Media',
+      dlVideos: dlVideosInput.checked,
+      dlImages: dlImagesInput.checked,
+      aspectRatio: aspectRatioSelect.value,
+      videoQuality: videoQualitySelect.value,
+      imageQuality: imageQualitySelect.value
     });
   }
 
-  if (folderInput) folderInput.addEventListener('change', saveSettings);
-  if (dlVideos) dlVideos.addEventListener('change', saveSettings);
-  if (dlImages) dlImages.addEventListener('change', saveSettings);
-  if (intervalSelect) intervalSelect.addEventListener('change', saveSettings);
+  saveFolderInput.addEventListener('change', saveSettings);
+  dlVideosInput.addEventListener('change', saveSettings);
+  dlImagesInput.addEventListener('change', saveSettings);
+  aspectRatioSelect.addEventListener('change', saveSettings);
+  videoQualitySelect.addEventListener('change', saveSettings);
+  imageQualitySelect.addEventListener('change', saveSettings);
 
-  if (downloadBtn) {
-    downloadBtn.addEventListener('click', async () => {
-      saveSettings();
-      if (statusDiv) statusDiv.textContent = 'Status: Extracting Google Flow media...';
-
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab) {
-        if (statusDiv) statusDiv.textContent = 'Status: No active tab found!';
-        return;
+  // Single Download Click
+  downloadBtn.addEventListener('click', () => {
+    saveSettings();
+    statusText.textContent = 'Scanning media...';
+    chrome.runtime.sendMessage({ action: 'downloadCurrentPage' }, (response) => {
+      if (chrome.runtime.lastError) {
+        statusText.textContent = 'Error: Page Reload Karein!';
+      } else if (response && response.status) {
+        statusText.textContent = `Status: ${response.status}`;
       }
-
-      chrome.runtime.sendMessage({ action: 'downloadCurrentPage', tabId: tab.id }, (response) => {
-        if (chrome.runtime.lastError) {
-          if (statusDiv) statusDiv.textContent = 'Status: Page reload karke try karein!';
-        } else if (response && response.status) {
-          if (statusDiv) statusDiv.textContent = `Status: ${response.status}`;
-        }
-      });
     });
-  }
+  });
 
-  if (monitorBtn) {
-    monitorBtn.addEventListener('click', async () => {
-      saveSettings();
-      const res = await chrome.storage.local.get(['isMonitoring']);
-      const newState = !res.isMonitoring;
-
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab) {
-        if (statusDiv) statusDiv.textContent = 'Status: No active tab found!';
-        return;
-      }
-
-      if (newState) {
-        chrome.storage.local.set({ isMonitoring: true });
-        monitorBtn.textContent = 'Stop Auto Monitoring';
-        monitorBtn.style.background = '#e74c3c';
-        if (statusDiv) statusDiv.textContent = 'Status: Monitoring Started!';
-
-        chrome.runtime.sendMessage({ action: 'startMonitoring', tabId: tab.id });
+  // Monitoring Toggle
+  monitorBtn.addEventListener('click', () => {
+    saveSettings();
+    chrome.storage.local.get(['isMonitoring'], (res) => {
+      const isMonitoring = !res.isMonitoring;
+      if (isMonitoring) {
+        chrome.runtime.sendMessage({ action: 'startMonitoring' }, (response) => {
+          monitorBtn.textContent = 'Stop Auto Monitoring';
+          monitorBtn.className = 'btn btn-danger';
+          statusText.textContent = 'Status: Monitoring Active...';
+        });
       } else {
-        chrome.storage.local.set({ isMonitoring: false });
-        monitorBtn.textContent = 'Start Auto Monitoring';
-        monitorBtn.style.background = '#2ecc71';
-        if (statusDiv) statusDiv.textContent = 'Status: Monitoring Stopped';
-
-        chrome.runtime.sendMessage({ action: 'stopMonitoring' });
+        chrome.runtime.sendMessage({ action: 'stopMonitoring' }, (response) => {
+          monitorBtn.textContent = 'Start Auto Monitoring';
+          monitorBtn.className = 'btn btn-success';
+          statusText.textContent = 'Status: Monitoring Stopped';
+        });
       }
     });
-  }
+  });
 
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      chrome.runtime.sendMessage({ action: 'resetHistory' }, (response) => {
-        if (statusDiv) statusDiv.textContent = 'Status: History & Sequence reset!';
-      });
+  // New Project Counter Reset Button
+  resetProjectBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'resetProjectCounter' }, (response) => {
+      statusText.textContent = 'Counter reset to 001!';
     });
-  }
-});
-// File Name: popup.js
+  });
 
-// Settings ko Chrome Storage mein save karna
-document.getElementById('saveSettingsBtn').addEventListener('click', () => {
-    const aspectRatio = document.getElementById('aspectRatioSelect').value;
-    const videoQuality = document.getElementById('videoQualitySelect').value;
-    const imageQuality = document.getElementById('imageQualitySelect').value;
-
-    chrome.storage.sync.set({
-        userAspectRatio: aspectRatio,
-        userVideoQuality: videoQuality,
-        userImageQuality: imageQuality
-    }, () => {
-        console.log("Settings successfully saved!");
-        alert("Settings saved successfully!");
+  // Full History Reset Button
+  clearLogBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'resetHistory' }, (response) => {
+      statusText.textContent = 'History & counter completely reset!';
     });
-});
-
-// Extension khulte hi purani saved settings load karna
-document.addEventListener('DOMContentLoaded', () => {
-    chrome.storage.sync.get(['userAspectRatio', 'userVideoQuality', 'userImageQuality'], (data) => {
-        if (data.userAspectRatio) {
-            document.getElementById('aspectRatioSelect').value = data.userAspectRatio;
-        }
-        if (data.userVideoQuality) {
-            document.getElementById('videoQualitySelect').value = data.userVideoQuality;
-        }
-        if (data.userImageQuality) {
-            document.getElementById('imageQualitySelect').value = data.userImageQuality;
-        }
-    });
+  });
 });
