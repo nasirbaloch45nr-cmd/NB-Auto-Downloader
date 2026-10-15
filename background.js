@@ -2,6 +2,8 @@
 
 let downloadedUrls = new Set();
 let clipSequenceCounter = 1;
+let downloadQueue = [];
+let isProcessingQueue = false;
 
 chrome.storage.local.get(['downloadedUrls', 'clipSequenceCounter'], (res) => {
   if (res.downloadedUrls) downloadedUrls = new Set(res.downloadedUrls);
@@ -19,25 +21,26 @@ function getFormattedDateTime() {
   return `${dd}${mm}${yy}_${hh}${min}${ss}`;
 }
 
-function processAndDownloadMedia(mediaList, saveFolder) {
-  if (!mediaList || mediaList.length === 0) return 0;
-  let downloadedCount = 0;
+// Queue Worker: Ek ek karke, line me, 800ms gap ke saath download karega
+async function processQueue(saveFolder) {
+  if (isProcessingQueue || downloadQueue.length === 0) return;
+  isProcessingQueue = true;
 
-  mediaList.forEach((item) => {
-    if (downloadedUrls.has(item.url)) return;
+  while (downloadQueue.length > 0) {
+    const item = downloadQueue.shift();
+
+    if (downloadedUrls.has(item.url)) continue;
 
     downloadedUrls.add(item.url);
-    downloadedCount++;
 
     const seqStr = String(clipSequenceCounter).padStart(3, '0');
     const dateTimeStr = getFormattedDateTime();
     const ext = item.isVideo ? 'mp4' : 'webp';
     const folder = saveFolder ? `${saveFolder}/` : 'GoogleFlow_Media/';
 
-    // Perfect Clean Filename Format: Clip_001_Artisan_installs_leather_151026_131421.mp4
     const cleanPrompt = item.promptText || 'Media';
     const filename = `${folder}Clip_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
-    
+
     clipSequenceCounter++;
 
     chrome.downloads.download({
@@ -45,14 +48,35 @@ function processAndDownloadMedia(mediaList, saveFolder) {
       filename: filename,
       conflictAction: 'uniquify'
     });
-  });
+
+    // Har download ke darmiyan 800 millisecond ka delay taaki chrome confuse na ho
+    await new Promise(resolve => setTimeout(resolve, 800));
+  }
 
   chrome.storage.local.set({
     downloadedUrls: Array.from(downloadedUrls),
     clipSequenceCounter: clipSequenceCounter
   });
 
-  return downloadedCount;
+  isProcessingQueue = false;
+}
+
+function processAndDownloadMedia(mediaList, saveFolder) {
+  if (!mediaList || mediaList.length === 0) return 0;
+  
+  let newAddedCount = 0;
+  mediaList.forEach((item) => {
+    if (!downloadedUrls.has(item.url) && !downloadQueue.some(q => q.url === item.url)) {
+      downloadQueue.push(item);
+      newAddedCount++;
+    }
+  });
+
+  if (newAddedCount > 0) {
+    processQueue(saveFolder);
+  }
+
+  return newAddedCount;
 }
 
 let monitoringIntervalId = null;
@@ -104,7 +128,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ status: 'Page reload karein!' });
           } else if (response && response.mediaList) {
             const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
-            sendResponse({ status: count > 0 ? `${count} clips downloaded!` : 'No new media found' });
+            sendResponse({ status: count > 0 ? `${count} clips added to queue!` : 'No new media found' });
           } else {
             sendResponse({ status: 'No media found' });
           }
@@ -133,6 +157,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'resetProjectCounter') {
     clipSequenceCounter = 1;
+    downloadQueue = [];
     chrome.storage.local.set({ clipSequenceCounter: 1 });
     sendResponse({ status: 'Counter Reset to 001' });
     return true;
@@ -141,6 +166,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'resetHistory') {
     downloadedUrls.clear();
     clipSequenceCounter = 1;
+    downloadQueue = [];
     chrome.storage.local.set({
       downloadedUrls: [],
       clipSequenceCounter: 1
