@@ -63,8 +63,8 @@ async function processQueue(saveFolder) {
       totalDownloadedCount: totalDownloadedCount
     });
 
-    // 1.5 seconds gap taake system bilkul sakoon aur tarteeb se chale
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // 1.2 seconds controlled delay for smooth flow
+    await new Promise(resolve => setTimeout(resolve, 1200));
   }
 
   isProcessingQueue = false;
@@ -79,7 +79,6 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   mediaList.forEach((item) => {
     if (downloadedUrls.has(item.url)) return;
 
-    // 30 seconds generation timeout check
     if (item.isGenerating) {
       if (!pendingGeneratingClips.has(item.url)) {
         pendingGeneratingClips.set(item.url, now);
@@ -88,9 +87,9 @@ function processAndDownloadMedia(mediaList, saveFolder) {
       const elapsedSeconds = (now - firstSeen) / 1000;
 
       if (elapsedSeconds < 30) {
-        return; // Abhi generate ho raha hai, intezaar karein
+        return; // Wait for generation up to 30s
       } else {
-        pendingGeneratingClips.delete(item.url); // Timeout hogaya, aage barho
+        pendingGeneratingClips.delete(item.url); // Timeout, proceed anyway
       }
     } else {
       pendingGeneratingClips.delete(item.url);
@@ -113,6 +112,18 @@ let monitoringIntervalId = null;
 
 function startAutoMonitoring() {
   if (monitoringIntervalId) clearInterval(monitoringIntervalId);
+
+  // Auto-Monitoring start hone par project counter/history auto reset kar dein taake fresh start ho
+  clipSequenceCounter = 1;
+  totalDownloadedCount = 0;
+  downloadedUrls.clear();
+  downloadQueue = [];
+  pendingGeneratingClips.clear();
+  chrome.storage.local.set({
+    downloadedUrls: [],
+    clipSequenceCounter: 1,
+    totalDownloadedCount: 0
+  });
 
   monitoringIntervalId = setInterval(() => {
     chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
@@ -138,11 +149,13 @@ function startAutoMonitoring() {
         });
       });
     });
-  }, 2500);
+  }, 4000); // Interval ko 4 seconds kiya taake browser par load na pare aur dimaag stable rahay
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'downloadCurrentPage') {
+    // Manual download par bhi project/counter fresh start ke liye auto-reset trigger kar sakte hain agar chahen, 
+    // filhaal ye current queue ko process karega.
     chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages'], (settings) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs || !tabs[0]) {
@@ -171,7 +184,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startMonitoring') {
     chrome.storage.local.set({ isMonitoring: true });
     startAutoMonitoring();
-    sendResponse({ status: 'Monitoring Active...' });
+    sendResponse({ status: 'Auto Monitoring Active (Fresh Reset)...' });
     return true;
   }
 
