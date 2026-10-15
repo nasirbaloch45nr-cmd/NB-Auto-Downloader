@@ -5,165 +5,112 @@
   <title>NB Auto Downloader</title>
   <style>
     body {
-      width: 280px;
-      padding: 15px;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: #11131e;
+      width: 320px;
+      font-family: Arial, sans-serif;
+      background-color: #121824;
       color: #ffffff;
       margin: 0;
+      padding: 12px;
     }
     .header {
+      font-size: 16px;
+      font-weight: bold;
+      color: #00d2ff;
+      margin-bottom: 10px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 15px;
-      border-bottom: 1px solid #2a2e45;
-      padding-bottom: 10px;
+      gap: 8px;
     }
-    .header img {
-      width: 32px;
-      height: 32px;
-      border-radius: 6px;
-    }
-    .header h3 {
-      margin: 0;
-      font-size: 16px;
-      color: #00d2ff;
-    }
-    .field-group {
-      margin-bottom: 12px;
-    }
-    label {
-      display: block;
+    .section-title {
       font-size: 11px;
-      color: #a0a5c0;
+      text-transform: uppercase;
+      color: #8a99ad;
+      margin-top: 10px;
       margin-bottom: 4px;
+      font-weight: bold;
     }
     input[type="text"], select {
       width: 100%;
-      padding: 8px;
-      background: #1e2238;
-      border: 1px solid #343a5e;
-      border-radius: 6px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #2a3547;
+      background: #1a2332;
       color: #fff;
-      box-sizing: border-box;
       font-size: 12px;
+      box-sizing: border-box;
+      margin-bottom: 8px;
+    }
+    .btn {
+      width: 100%;
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 6px;
+      font-size: 12px;
+    }
+    .btn-primary { background: #00d2ff; color: #000; }
+    .btn-success { background: #10b981; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-secondary { background: #374151; color: #fff; }
+    .status {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #a0aec0;
+      text-align: center;
     }
     .checkbox-group {
       display: flex;
       gap: 12px;
-      margin-bottom: 15px;
-    }
-    .checkbox-group label {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      cursor: pointer;
       font-size: 12px;
-      color: #fff;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
       margin-bottom: 8px;
-      border: none;
-      border-radius: 6px;
-      font-weight: bold;
-      font-size: 12px;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-    button:hover {
-      opacity: 0.9;
-    }
-    #downloadBtn {
-      background: #00d2ff;
-      color: #000;
-    }
-    #monitorBtn {
-      background: #2ecc71;
-      color: #fff;
-    }
-    #resetBtn {
-      background: #34495e;
-      color: #fff;
-    }
-    #status {
-      margin-top: 10px;
-      font-size: 11px;
-      color: #00d2ff;
-      text-align: center;
-      font-weight: 500;
     }
   </style>
 </head>
 <body>
+
   <div class="header">
-    <img src="icon.png" alt="Logo">
-    <h3>NB Auto Downloader</h3>
+    <span>👑</span> NB Auto Downloader
   </div>
 
-  <div class="field-group">
-    <label for="folderInput">Save Folder (inside Downloads):</label>
-    <input type="text" id="folderInput" placeholder="GoogleFlow_Media">
-  </div>
+  <div class="section-title">Save Folder & Project</div>
+  <input type="text" id="saveFolder" value="GoogleFlow_Media" placeholder="Folder Name">
 
   <div class="checkbox-group">
     <label><input type="checkbox" id="dlVideos" checked> Videos (.mp4)</label>
     <label><input type="checkbox" id="dlImages" checked> Images (.webp)</label>
   </div>
 
-  <div class="field-group">
-    <label for="intervalSelect">Check Interval:</label>
-    <select id="intervalSelect">
-      <option value="2000">Every 2 Seconds</option>
-      <option value="3000" selected>Every 3 Seconds</option>
-      <option value="5000">Every 5 Seconds</option>
-      <option value="10000">Every 10 Seconds</option>
-    </select>
-  </div>
+  <div class="section-title">Media Controls</div>
+  <label style="font-size: 11px;">Aspect Ratio:</label>
+  <select id="aspectRatioSelect">
+    <option value="16:9">16:9 (YouTube)</option>
+    <option value="9:16">9:16 (TikTok / Shorts)</option>
+    <option value="1:1">1:1 (Square)</option>
+    <option value="4:3">4:3 (Standard)</option>
+  </select>
 
-  <button id="downloadBtn">Download Current Page</button>
-  <button id="monitorBtn">Start Auto Monitoring</button>
-  <button id="resetBtn">Reset History / Clear Log</button>
+  <label style="font-size: 11px;">Video Quality:</label>
+  <select id="videoQualitySelect">
+    <option value="720p">720p HD</option>
+    <option value="1080p">1080p Full HD</option>
+  </select>
 
-  <div id="status">Status: Ready</div>
+  <label style="font-size: 11px;">Image Quality:</label>
+  <select id="imageQualitySelect">
+    <option value="1k">1K Standard</option>
+    <option value="2k">2K High Quality</option>
+  </select>
+
+  <div class="section-title">Actions</div>
+  <button id="downloadBtn" class="btn btn-primary">Download Current Page</button>
+  <button id="monitorBtn" class="btn btn-success">Start Auto Monitoring</button>
+  <button id="resetProjectBtn" class="btn btn-secondary">⚡ New Project (Reset Counter to 001)</button>
+  <button id="clearLogBtn" class="btn btn-danger">Reset History / Clear Log</button>
+
+  <div class="status" id="statusText">Status: Ready</div>
 
   <script src="popup.js"></script>
 </body>
 </html>
-<!-- File Name: popup.html -->
-<div class="settings-container p-3 space-y-3">
-    <!-- Aspect Ratio Selection -->
-    <div class="setting-group">
-        <label class="text-xs font-semibold">Default Aspect Ratio</label>
-        <select id="aspectRatioSelect" class="w-full p-inputtext text-xs">
-            <option value="16:9">16:9 (YouTube)</option>
-            <option value="9:16">9:16 (TikTok / Shorts / Reels)</option>
-            <option value="1:1">1:1 (Square)</option>
-            <option value="4:3">4:3 (Standard)</option>
-        </select>
-    </div>
-
-    <!-- Video Quality Selection -->
-    <div class="setting-group">
-        <label class="text-xs font-semibold">Auto Download Quality (Video)</label>
-        <select id="videoQualitySelect" class="w-full p-inputtext text-xs">
-            <option value="720p">720p HD</option>
-            <option value="1080p">1080p Full HD</option>
-            <option value="4k">4K Ultra HD</option>
-        </select>
-    </div>
-
-    <!-- Image Quality Selection -->
-    <div class="setting-group">
-        <label class="text-xs font-semibold">Auto Download Quality (Image)</label>
-        <select id="imageQualitySelect" class="w-full p-inputtext text-xs">
-            <option value="1k">1K Standard</option>
-            <option value="2k">2K High Quality</option>
-            <option value="4k">4K Maximum</option>
-        </select>
-    </div>
-
-    <button id="saveSettingsBtn" class="p-button p-button-sm w-full mt-2">Save Settings</button>
-</div>
