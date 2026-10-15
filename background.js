@@ -63,8 +63,8 @@ async function processQueue(saveFolder) {
       totalDownloadedCount: totalDownloadedCount
     });
 
-    // 1.2 second controlled delay taake order line mein rahe
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    // 1.5 seconds gap taake system bilkul sakoon aur tarteeb se chale
+    await new Promise(resolve => setTimeout(resolve, 1500));
   }
 
   isProcessingQueue = false;
@@ -79,6 +79,7 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   mediaList.forEach((item) => {
     if (downloadedUrls.has(item.url)) return;
 
+    // 30 seconds generation timeout check
     if (item.isGenerating) {
       if (!pendingGeneratingClips.has(item.url)) {
         pendingGeneratingClips.set(item.url, now);
@@ -87,9 +88,9 @@ function processAndDownloadMedia(mediaList, saveFolder) {
       const elapsedSeconds = (now - firstSeen) / 1000;
 
       if (elapsedSeconds < 30) {
-        return;
+        return; // Abhi generate ho raha hai, intezaar karein
       } else {
-        pendingGeneratingClips.delete(item.url);
+        pendingGeneratingClips.delete(item.url); // Timeout hogaya, aage barho
       }
     } else {
       pendingGeneratingClips.delete(item.url);
@@ -137,7 +138,7 @@ function startAutoMonitoring() {
         });
       });
     });
-  }, 3000);
+  }, 2500);
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
