@@ -16,10 +16,30 @@
       font-size: 16px;
       font-weight: bold;
       color: #00d2ff;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 8px;
+    }
+    .version-badge {
+      font-size: 10px;
+      background: #1e293b;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #94a3b8;
+      border: 1px solid #334155;
+    }
+    .update-banner {
+      display: none;
+      background: #059669;
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 10px;
+      cursor: pointer;
     }
     .section-title {
       font-size: 11px;
@@ -71,7 +91,12 @@
 <body>
 
   <div class="header">
-    <span>👑</span> NB Auto Downloader
+    <span>👑 NB Auto Downloader</span>
+    <span class="version-badge" id="appVersion">v1.1</span>
+  </div>
+
+  <div id="updateBanner" class="update-banner">
+    ⚡ New Update Available! Click to Sync
   </div>
 
   <div class="section-title">Save Folder & Project</div>
