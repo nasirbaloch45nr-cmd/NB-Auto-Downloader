@@ -5,6 +5,11 @@ let clipSequenceCounter = 1;
 let downloadQueue = [];
 let isProcessingQueue = false;
 
+// Extension icon click karne par Side Panel kholna
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ windowId: tab.windowId });
+});
+
 chrome.storage.local.get(['downloadedUrls', 'clipSequenceCounter'], (res) => {
   if (res.downloadedUrls) downloadedUrls = new Set(res.downloadedUrls);
   if (res.clipSequenceCounter) clipSequenceCounter = res.clipSequenceCounter;
@@ -21,7 +26,6 @@ function getFormattedDateTime() {
   return `${dd}${mm}${yy}_${hh}${min}${ss}`;
 }
 
-// Queue Worker: Ek ek karke, line me, 800ms gap ke saath download karega
 async function processQueue(saveFolder) {
   if (isProcessingQueue || downloadQueue.length === 0) return;
   isProcessingQueue = true;
@@ -49,7 +53,6 @@ async function processQueue(saveFolder) {
       conflictAction: 'uniquify'
     });
 
-    // Har download ke darmiyan 800 millisecond ka delay taaki chrome confuse na ho
     await new Promise(resolve => setTimeout(resolve, 800));
   }
 
