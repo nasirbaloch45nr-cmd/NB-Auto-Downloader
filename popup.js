@@ -11,6 +11,31 @@ document.addEventListener('DOMContentLoaded', () => {
   const resetProjectBtn = document.getElementById('resetProjectBtn');
   const clearLogBtn = document.getElementById('clearLogBtn');
   const statusText = document.getElementById('statusText');
+  const updateBanner = document.getElementById('updateBanner');
+  const appVersion = document.getElementById('appVersion');
+
+  // Current Manifest Version set karein
+  const currentVer = chrome.runtime.getManifest().version;
+  appVersion.textContent = `v${currentVer}`;
+
+  // GitHub Auto Version Check
+  const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/NasirAli-1/NB-Auto-Downloader/main/manifest.json';
+
+  fetch(GITHUB_MANIFEST_URL)
+    .then(res => res.json())
+    .then(data => {
+      if (data.version && data.version !== currentVer) {
+        updateBanner.style.display = 'block';
+        updateBanner.textContent = `⚡ New Version v${data.version} Available! Click to Update`;
+      }
+    })
+    .catch(() => {
+      // Offline / error silent handling
+    });
+
+  updateBanner.addEventListener('click', () => {
+    alert("Naya update GitHub par live hai! Extension page (chrome://extensions) par Reload (🔄) dabayein.");
+  });
 
   // Saved settings load karein
   chrome.storage.local.get([
@@ -31,7 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Settings update hone par auto-save karein
   function saveSettings() {
     chrome.storage.local.set({
       saveFolder: saveFolderInput.value.trim() || 'GoogleFlow_Media',
@@ -50,7 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
   videoQualitySelect.addEventListener('change', saveSettings);
   imageQualitySelect.addEventListener('change', saveSettings);
 
-  // Single Download Click
   downloadBtn.addEventListener('click', () => {
     saveSettings();
     statusText.textContent = 'Scanning media...';
@@ -63,7 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Monitoring Toggle
   monitorBtn.addEventListener('click', () => {
     saveSettings();
     chrome.storage.local.get(['isMonitoring'], (res) => {
@@ -84,14 +106,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // New Project Counter Reset Button
   resetProjectBtn.addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'resetProjectCounter' }, (response) => {
       statusText.textContent = 'Counter reset to 001!';
     });
   });
 
-  // Full History Reset Button
   clearLogBtn.addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'resetHistory' }, (response) => {
       statusText.textContent = 'History & counter completely reset!';
