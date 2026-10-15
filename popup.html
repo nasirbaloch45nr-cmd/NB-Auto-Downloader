@@ -40,16 +40,29 @@
       color: #94a3b8;
       border: 1px solid #334155;
     }
-    .update-banner {
-      display: none;
-      background: #059669;
-      color: #ffffff;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: bold;
+    .stats-card {
+      background: #0f172a;
+      border: 1px solid #00d2ff33;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
       text-align: center;
-      cursor: pointer;
+    }
+    .stat-box {
+      display: flex;
+      flex-direction: column;
+    }
+    .stat-number {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00d2ff;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: #94a3b8;
+      text-transform: uppercase;
     }
     .section-title {
       font-size: 11px;
@@ -78,9 +91,6 @@
       font-size: 13px;
       box-sizing: border-box;
     }
-    input[type="text"]:focus, select:focus {
-      outline: 1px solid #00d2ff;
-    }
     .btn {
       width: 100%;
       padding: 10px;
@@ -89,10 +99,6 @@
       font-weight: bold;
       cursor: pointer;
       font-size: 13px;
-      transition: opacity 0.2s;
-    }
-    .btn:hover {
-      opacity: 0.9;
     }
     .btn-primary { background: #00d2ff; color: #000; }
     .btn-success { background: #10b981; color: #fff; }
@@ -112,12 +118,6 @@
       gap: 16px;
       font-size: 13px;
     }
-    .checkbox-group label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-    }
   </style>
 </head>
 <body>
@@ -125,11 +125,19 @@
   <div class="container">
     <div class="header">
       <span>👑 NB Auto Downloader</span>
-      <span class="version-badge" id="appVersion">v1.2</span>
+      <span class="version-badge" id="appVersion">v1.3</span>
     </div>
 
-    <div id="updateBanner" class="update-banner">
-      ⚡ New Update Available! Click to Sync
+    <!-- Live Counter Box -->
+    <div class="stats-card">
+      <div class="stat-box">
+        <span class="stat-number" id="counterDownloaded">0</span>
+        <span class="stat-label">Clips Downloaded</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-number" id="nextClipSeq">001</span>
+        <span class="stat-label">Next Sequence</span>
+      </div>
     </div>
 
     <div class="card">
