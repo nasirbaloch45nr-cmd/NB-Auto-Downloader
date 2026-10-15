@@ -1,52 +1,73 @@
-if (window.nbDownloaderInjected) {
-  // Already injected
-} else {
-  window.nbDownloaderInjected = true;
+// File Name: content.js
 
-  function sanitizeFilename(text) {
-    if (!text) return 'Clip';
-    return text.replace(/[^a-zA-Z0-9_\-]/g, '_').substring(0, 30);
-  }
+function cleanPromptText(text) {
+  if (!text) return 'Prompt';
 
-  function scanGoogleFlowMedia(dlVideos = true, dlImages = true) {
-    const mediaList = [];
-    const foundUrls = new Set();
+  // Step 1: Extra whitespace saaf karein
+  let clean = text.trim();
 
-    const elements = document.querySelectorAll('img, video, source, a');
+  // Step 2: Google Flow ke common UI icons/button words ko remove karein
+  const garbageWords = [
+    /play_circle/gi, /360p/gi, /720p/gi, /1080p/gi,
+    /favoriteredo/gi, /redomor/gi, /more_vert/gi, /download/gi,
+    /favorite/gi, /redo/gi, /share/gi, /fullscreen/gi
+  ];
 
-    elements.forEach((elem) => {
-      let src = elem.src || elem.href || elem.getAttribute('src') || elem.getAttribute('href');
-      if (!src || src.startsWith('data:') || src.startsWith('blob:placeholder') || src.startsWith('javascript:')) return;
-
-      const isVideo = elem.tagName === 'VIDEO' || elem.tagName === 'SOURCE' || src.includes('.mp4') || src.includes('video');
-      const isImage = (elem.tagName === 'IMG' || src.includes('.webp') || src.includes('.jpg') || src.includes('.png')) && !isVideo;
-
-      if (isVideo && !dlVideos) return;
-      if (isImage && !dlImages) return;
-
-      if ((isVideo || isImage) && src.startsWith('http') && !foundUrls.has(src)) {
-        foundUrls.add(src);
-
-        let parent = elem.closest('[class*="card"], [class*="item"]') || elem.parentElement;
-        let promptText = parent ? (parent.getAttribute('aria-label') || parent.textContent) : 'FlowClip';
-        promptText = sanitizeFilename(promptText);
-
-        mediaList.push({
-          url: src,
-          isVideo: isVideo,
-          promptText: promptText
-        });
-      }
-    });
-
-    return mediaList;
-  }
-
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'scanAndDownload') {
-      const media = scanGoogleFlowMedia(request.dlVideos ?? true, request.dlImages ?? true);
-      sendResponse({ mediaList: media, count: media.length });
-    }
-    return true;
+  garbageWords.forEach(pattern => {
+    clean = clean.replace(pattern, '');
   });
+
+  // Step 3: Special characters mita kar spaces ko underscores banayein
+  clean = clean
+    .replace(/[^a-zA-Z0-9\s_-]/g, '') // sirf safe characters rakhein
+    .replace(/\s+/g, '_')             // spaces -> _
+    .replace(/_+/g, '_')              // double __ -> _
+    .replace(/^_+|_+$/g, '');         // shuru/aakhir ke _ mitaayein
+
+  // Pehle 40 characters lein taake filename zyada lamba na ho
+  return clean.slice(0, 40) || 'Clip';
 }
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'scanAndDownload') {
+    const mediaList = [];
+    
+    // Videos scan karein
+    if (request.dlVideos) {
+      const videos = document.querySelectorAll('video');
+      videos.forEach((vid) => {
+        if (vid.src && vid.src.startsWith('http')) {
+          // Nearest container se prompt text dhoondna
+          const parentCard = vid.closest('[class*="card"], [class*="item"], div') || vid.parentElement;
+          const rawText = parentCard ? parentCard.innerText : '';
+          
+          mediaList.push({
+            url: vid.src,
+            isVideo: true,
+            promptText: cleanPromptText(rawText)
+          });
+        }
+      });
+    }
+
+    // Images scan karein
+    if (request.dlImages) {
+      const images = document.querySelectorAll('img');
+      images.forEach((img) => {
+        if (img.src && img.src.startsWith('http') && !img.src.includes('avatar') && !img.src.includes('icon')) {
+          const parentCard = img.closest('[class*="card"], [class*="item"], div') || img.parentElement;
+          const rawText = parentCard ? parentCard.innerText : '';
+
+          mediaList.push({
+            url: img.src,
+            isVideo: false,
+            promptText: cleanPromptText(rawText)
+          });
+        }
+      });
+    }
+
+    sendResponse({ mediaList: mediaList });
+  }
+  return true;
+});
