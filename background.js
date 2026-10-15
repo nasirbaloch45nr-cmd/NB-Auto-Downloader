@@ -1,3 +1,5 @@
+// File Name: background.js
+
 let downloadedUrls = new Set();
 let clipSequenceCounter = 1;
 
@@ -32,7 +34,10 @@ function processAndDownloadMedia(mediaList, saveFolder) {
     const ext = item.isVideo ? 'mp4' : 'webp';
     const folder = saveFolder ? `${saveFolder}/` : 'GoogleFlow_Media/';
 
-    const filename = `${folder}Clip_${seqStr}_${item.promptText}_${dateTimeStr}.${ext}`;
+    // Perfect Clean Filename Format: Clip_001_Artisan_installs_leather_151026_131421.mp4
+    const cleanPrompt = item.promptText || 'Media';
+    const filename = `${folder}Clip_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
+    
     clipSequenceCounter++;
 
     chrome.downloads.download({
@@ -126,7 +131,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // Sirf Naye Project ka Counter 001 karne ke liye
   if (request.action === 'resetProjectCounter') {
     clipSequenceCounter = 1;
     chrome.storage.local.set({ clipSequenceCounter: 1 });
@@ -134,7 +138,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // Poora History aur Counter Mitanay ke liye
   if (request.action === 'resetHistory') {
     downloadedUrls.clear();
     clipSequenceCounter = 1;
