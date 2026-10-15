@@ -35,10 +35,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (vid.src && vid.src.startsWith('http')) {
           const parentCard = vid.closest('[class*="card"], [class*="item"], div') || vid.parentElement;
           const rawText = parentCard ? parentCard.innerText : '';
+          
+          // Check if card is currently generating/loading
+          const isGenerating = parentCard ? (
+            parentCard.innerText.toLowerCase().includes('generating') || 
+            parentCard.querySelector('[class*="spinner"], [class*="loading"], [class*="progress"]') !== null
+          ) : false;
+
           rawList.push({
             url: vid.src,
             isVideo: true,
-            promptText: cleanPromptText(rawText)
+            promptText: cleanPromptText(rawText),
+            isGenerating: isGenerating
           });
         }
       });
@@ -51,16 +59,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (img.src && img.src.startsWith('http') && !img.src.includes('avatar') && !img.src.includes('icon')) {
           const parentCard = img.closest('[class*="card"], [class*="item"], div') || img.parentElement;
           const rawText = img.alt || (parentCard ? parentCard.innerText : '');
+
+          const isGenerating = parentCard ? (
+            parentCard.innerText.toLowerCase().includes('generating') || 
+            parentCard.querySelector('[class*="spinner"], [class*="loading"]') !== null
+          ) : false;
+
           rawList.push({
             url: img.src,
             isVideo: false,
-            promptText: cleanPromptText(rawText)
+            promptText: cleanPromptText(rawText),
+            isGenerating: isGenerating
           });
         }
       });
     }
 
-    // Page ke bottom-most (sabse pehle bane clips) ko sequence order mein lane ke liye reverse sorting
+    // Chronological order (Bottom to Top)
     const orderedList = Array.from(rawList).reverse();
 
     sendResponse({ mediaList: orderedList });
