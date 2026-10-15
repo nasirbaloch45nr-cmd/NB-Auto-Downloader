@@ -6,7 +6,6 @@ let downloadQueue = [];
 let isProcessingQueue = false;
 let totalDownloadedCount = 0;
 
-// Generating state retry tracking (URL -> first_seen_timestamp)
 let pendingGeneratingClips = new Map();
 
 chrome.action.onClicked.addListener((tab) => {
@@ -43,7 +42,7 @@ async function processQueue(saveFolder) {
 
     const seqStr = String(clipSequenceCounter).padStart(3, '0');
     const dateTimeStr = getFormattedDateTime();
-    const ext = item.isVideo ? 'mp4' : 'webp';
+    const ext = item.isVideo ? 'mp4' : 'jpg';
     const folder = saveFolder ? `${saveFolder}/` : 'GoogleFlow_Media/';
 
     const cleanPrompt = item.promptText || 'Media';
@@ -58,15 +57,14 @@ async function processQueue(saveFolder) {
       conflictAction: 'uniquify'
     });
 
-    // Storage aur counter state update
     chrome.storage.local.set({
       downloadedUrls: Array.from(downloadedUrls),
       clipSequenceCounter: clipSequenceCounter,
       totalDownloadedCount: totalDownloadedCount
     });
 
-    // Har download ke darmiyan controlled delay (1 Second) taake system par bojh na pade
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 1.2 second controlled delay taake order line mein rahe
+    await new Promise(resolve => setTimeout(resolve, 1200));
   }
 
   isProcessingQueue = false;
@@ -79,30 +77,24 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   let newAddedCount = 0;
 
   mediaList.forEach((item) => {
-    // Agar pehle se downloaded hai toh ignore karein
     if (downloadedUrls.has(item.url)) return;
 
-    // Agar item abhi generating mode mein hai
     if (item.isGenerating) {
       if (!pendingGeneratingClips.has(item.url)) {
-        pendingGeneratingClips.set(item.url, now); // Pehli baar dekha, timer start 30s
+        pendingGeneratingClips.set(item.url, now);
       }
       const firstSeen = pendingGeneratingClips.get(item.url);
       const elapsedSeconds = (now - firstSeen) / 1000;
 
-      // 30 seconds tak mohlat dengen
       if (elapsedSeconds < 30) {
-        return; // Abhi ruken, agli baar re-scan par check karenge
+        return;
       } else {
-        // 30 seconds guzar gaye, skip karke aage badhen
         pendingGeneratingClips.delete(item.url);
       }
     } else {
-      // Complete ho gayi hai
       pendingGeneratingClips.delete(item.url);
     }
 
-    // Queue mein add karein
     if (!downloadQueue.some(q => q.url === item.url)) {
       downloadQueue.push(item);
       newAddedCount++;
