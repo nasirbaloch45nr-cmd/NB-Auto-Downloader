@@ -63,8 +63,7 @@ async function processQueue(saveFolder) {
       totalDownloadedCount: totalDownloadedCount
     });
 
-    // 1.5 seconds controlled delay taake order line mein rahe
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, 1200));
   }
 
   isProcessingQueue = false;
@@ -87,7 +86,7 @@ function processAndDownloadMedia(mediaList, saveFolder) {
       const elapsedSeconds = (now - firstSeen) / 1000;
 
       if (elapsedSeconds < 30) {
-        return; // Generating state timer
+        return;
       } else {
         pendingGeneratingClips.delete(item.url);
       }
@@ -112,6 +111,18 @@ let monitoringIntervalId = null;
 
 function startAutoMonitoring() {
   if (monitoringIntervalId) clearInterval(monitoringIntervalId);
+
+  // Auto-Reset on Start
+  clipSequenceCounter = 1;
+  totalDownloadedCount = 0;
+  downloadedUrls.clear();
+  downloadQueue = [];
+  pendingGeneratingClips.clear();
+  chrome.storage.local.set({
+    downloadedUrls: [],
+    clipSequenceCounter: 1,
+    totalDownloadedCount: 0
+  });
 
   monitoringIntervalId = setInterval(() => {
     chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
@@ -170,7 +181,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startMonitoring') {
     chrome.storage.local.set({ isMonitoring: true });
     startAutoMonitoring();
-    sendResponse({ status: 'Monitoring Active...' });
+    sendResponse({ status: 'Auto Monitoring Active...' });
     return true;
   }
 
