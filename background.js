@@ -112,18 +112,6 @@ let monitoringIntervalId = null;
 function startAutoMonitoring() {
   if (monitoringIntervalId) clearInterval(monitoringIntervalId);
 
-  // Auto-Reset on Start
-  clipSequenceCounter = 1;
-  totalDownloadedCount = 0;
-  downloadedUrls.clear();
-  downloadQueue = [];
-  pendingGeneratingClips.clear();
-  chrome.storage.local.set({
-    downloadedUrls: [],
-    clipSequenceCounter: 1,
-    totalDownloadedCount: 0
-  });
-
   monitoringIntervalId = setInterval(() => {
     chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
       if (!settings.isMonitoring) {
@@ -136,6 +124,7 @@ function startAutoMonitoring() {
         if (!tabs || !tabs[0]) return;
         const tabId = tabs[0].id;
 
+        // Auto-monitoring mein pehle page ko thoda scroll karwa kar saare hidden items trigger kar sakte hain ya direct scan
         chrome.tabs.sendMessage(tabId, {
           action: 'scanAndDownload',
           dlVideos: settings.dlVideos ?? true,
@@ -159,19 +148,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sendResponse({ status: 'No active tab!' });
           return;
         }
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'scanAndDownload',
-          dlVideos: settings.dlVideos ?? true,
-          dlImages: settings.dlImages ?? true
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            sendResponse({ status: 'Page reload karein!' });
-          } else if (response && response.mediaList) {
-            const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
-            sendResponse({ status: count > 0 ? `${count} clips added to queue!` : 'No ready media found' });
-          } else {
-            sendResponse({ status: 'No media found' });
-          }
+        
+        // Zoom-in / hidden items ko catch karne ke liye pehle page ke top par scroll karwayenge phir scan karenge
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          func: () => { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+        }, () => {
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tabs[0].id, {
+              action: 'scanAndDownload',
+              dlVideos: settings.dlVideos ?? true,
+              dlImages: settings.dlImages ?? true
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                sendResponse({ status: 'Page reload karein!' });
+              } else if (response && response.mediaList) {
+                const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
+                sendResponse({ status: count > 0 ? `${count} clips added to queue!` : 'No ready media found' });
+              } else {
+                sendResponse({ status: 'No media found' });
+              }
+            });
+          }, 800);
         });
       });
     });
