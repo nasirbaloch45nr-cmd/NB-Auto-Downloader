@@ -8,8 +8,17 @@ let totalDownloadedCount = 0;
 
 let pendingGeneratingClips = new Map();
 
+// Enable side panel on extension icon click
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((error) => console.error(error));
+
 chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ windowId: tab.windowId });
+  if (chrome.sidePanel && chrome.sidePanel.open) {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch((err) => {
+      console.log('Side panel open error:', err);
+    });
+  }
 });
 
 chrome.storage.local.get(['downloadedUrls', 'clipSequenceCounter', 'totalDownloadedCount'], (res) => {
@@ -129,7 +138,7 @@ function executeMonitoringScan() {
   });
 }
 
-// Chrome Alarm Listener for robust background monitoring (bypasses service worker sleep)
+// Chrome Alarm Listener for reliable background monitoring
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'autoMonitorAlarm') {
     executeMonitoringScan();
@@ -186,7 +195,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       totalDownloadedCount: 0
     });
 
-    // Create periodic alarm every 0.1 minutes (6 seconds)
+    // Alarm interval trigger
     chrome.alarms.create('autoMonitorAlarm', { periodInMinutes: 0.1 });
 
     sendResponse({ status: 'Auto Monitoring Active...' });
