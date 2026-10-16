@@ -107,38 +107,34 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   return newAddedCount;
 }
 
-let monitoringIntervalId = null;
+function executeMonitoringScan() {
+  chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
+    if (!settings.isMonitoring) return;
 
-function startAutoMonitoring() {
-  if (monitoringIntervalId) clearInterval(monitoringIntervalId);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs || !tabs[0]) return;
+      const tabId = tabs[0].id;
 
-  monitoringIntervalId = setInterval(() => {
-    chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
-      if (!settings.isMonitoring) {
-        clearInterval(monitoringIntervalId);
-        monitoringIntervalId = null;
-        return;
-      }
-
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!tabs || !tabs[0]) return;
-        const tabId = tabs[0].id;
-
-        // Auto-monitoring mein pehle page ko thoda scroll karwa kar saare hidden items trigger kar sakte hain ya direct scan
-        chrome.tabs.sendMessage(tabId, {
-          action: 'scanAndDownload',
-          dlVideos: settings.dlVideos ?? true,
-          dlImages: settings.dlImages ?? true
-        }, (response) => {
-          if (chrome.runtime.lastError) return;
-          if (response && response.mediaList) {
-            processAndDownloadMedia(response.mediaList, settings.saveFolder);
-          }
-        });
+      chrome.tabs.sendMessage(tabId, {
+        action: 'scanAndDownload',
+        dlVideos: settings.dlVideos ?? true,
+        dlImages: settings.dlImages ?? true
+      }, (response) => {
+        if (chrome.runtime.lastError) return;
+        if (response && response.mediaList) {
+          processAndDownloadMedia(response.mediaList, settings.saveFolder);
+        }
       });
     });
-  }, 4000);
+  });
 }
+
+// Chrome Alarm Listener for robust background monitoring (bypasses service worker sleep)
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'autoMonitorAlarm') {
+    executeMonitoringScan();
+  }
+});
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'downloadCurrentPage') {
@@ -148,8 +144,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sendResponse({ status: 'No active tab!' });
           return;
         }
-        
-        // Zoom-in / hidden items ko catch karne ke liye pehle page ke top par scroll karwayenge phir scan karenge
+
         chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
           func: () => { window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -178,17 +173,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'startMonitoring') {
     chrome.storage.local.set({ isMonitoring: true });
-    startAutoMonitoring();
+    
+    // Auto-Reset on Start
+    clipSequenceCounter = 1;
+    totalDownloadedCount = 0;
+    downloadedUrls.clear();
+    downloadQueue = [];
+    pendingGeneratingClips.clear();
+    chrome.storage.local.set({
+      downloadedUrls: [],
+      clipSequenceCounter: 1,
+      totalDownloadedCount: 0
+    });
+
+    // Create periodic alarm every 0.1 minutes (6 seconds)
+    chrome.alarms.create('autoMonitorAlarm', { periodInMinutes: 0.1 });
+
     sendResponse({ status: 'Auto Monitoring Active...' });
     return true;
   }
 
   if (request.action === 'stopMonitoring') {
     chrome.storage.local.set({ isMonitoring: false });
-    if (monitoringIntervalId) {
-      clearInterval(monitoringIntervalId);
-      monitoringIntervalId = null;
-    }
+    chrome.alarms.clear('autoMonitorAlarm');
     sendResponse({ status: 'Monitoring Stopped' });
     return true;
   }
