@@ -8,10 +8,12 @@ let totalDownloadedCount = 0;
 
 let pendingGeneratingClips = new Map();
 
-// Enable sidepanel behavior
-chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((error) => console.error(error));
+// Enable sidepanel behavior safely
+try {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error) => console.log(error));
+} catch (e) {}
 
 chrome.storage.local.get(['downloadedUrls', 'clipSequenceCounter', 'totalDownloadedCount'], (res) => {
   if (res.downloadedUrls) downloadedUrls = new Set(res.downloadedUrls);
@@ -108,13 +110,46 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   return newAddedCount;
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'autoProcessMedia') {
-    processAndDownloadMedia(request.mediaList, request.saveFolder);
-    sendResponse({ status: 'Processed' });
-    return true;
-  }
+// Safe Message Sender Wrapper to completely prevent "Receiving end does not exist" crashes
+function safeSendTabMessage(tabId, message, callback) {
+  chrome.tabs.sendMessage(tabId, message, (response) => {
+    if (chrome.runtime.lastError) {
+      if (callback) callback(null);
+      return;
+    }
+    if (callback) callback(response);
+  });
+}
 
+function executeMonitoringScan() {
+  chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
+    if (!settings.isMonitoring) return;
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs || !tabs[0]) return;
+      const tabId = tabs[0].id;
+
+      safeSendTabMessage(tabId, {
+        action: 'scanAndDownload',
+        dlVideos: settings.dlVideos ?? true,
+        dlImages: settings.dlImages ?? true
+      }, (response) => {
+        if (response && response.mediaList) {
+          processAndDownloadMedia(response.mediaList, settings.saveFolder);
+        }
+      });
+    });
+  });
+}
+
+// Alarm Listener for background check
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'autoMonitorAlarm') {
+    executeMonitoringScan();
+  }
+});
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'downloadCurrentPage') {
     chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages'], (settings) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -123,23 +158,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
 
+        const tabId = tabs[0].id;
+
         chrome.scripting.executeScript({
-          target: { tabId: tabs[0].id },
+          target: { tabId: tabId },
           func: () => { window.scrollTo({ top: 0, behavior: 'smooth' }); }
         }, () => {
           setTimeout(() => {
-            chrome.tabs.sendMessage(tabs[0].id, {
+            safeSendTabMessage(tabId, {
               action: 'scanAndDownload',
               dlVideos: settings.dlVideos ?? true,
               dlImages: settings.dlImages ?? true
             }, (response) => {
-              if (chrome.runtime.lastError) {
-                sendResponse({ status: 'Page reload karein!' });
-              } else if (response && response.mediaList) {
+              if (!response || !response.mediaList) {
+                sendResponse({ status: 'Page reload karein ya content script load nahi hai!' });
+              } else {
                 const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
                 sendResponse({ status: count > 0 ? `${count} clips added to queue!` : 'No ready media found' });
-              } else {
-                sendResponse({ status: 'No media found' });
               }
             });
           }, 800);
@@ -164,11 +199,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       totalDownloadedCount: 0
     });
 
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'startContentMonitoring' });
-      }
-    });
+    chrome.alarms.create('autoMonitorAlarm', { periodInMinutes: 0.1 });
 
     sendResponse({ status: 'Auto Monitoring Active...' });
     return true;
@@ -176,13 +207,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'stopMonitoring') {
     chrome.storage.local.set({ isMonitoring: false });
-    
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'stopContentMonitoring' });
-      }
-    });
-
+    chrome.alarms.clear('autoMonitorAlarm');
     sendResponse({ status: 'Monitoring Stopped' });
     return true;
   }
