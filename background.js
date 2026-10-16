@@ -7,6 +7,7 @@ let isProcessingQueue = false;
 let totalDownloadedCount = 0;
 
 let pendingGeneratingClips = new Map();
+let failedUrls = new Set(); // URLs jo download fail hue (dobara dobara retry na hon)
 
 // Enable sidepanel behavior safely
 try {
@@ -32,44 +33,68 @@ function getFormattedDateTime() {
   return `${dd}${mm}${yy}_${hh}${min}${ss}`;
 }
 
+function getImageExtension(url) {
+  const u = url.toLowerCase();
+  if (u.includes('.webp')) return 'webp';
+  if (u.includes('.png')) return 'png';
+  return 'jpg';
+}
+
+function startDownload(url, filename) {
+  return new Promise((resolve) => {
+    chrome.downloads.download({ url, filename, conflictAction: 'uniquify' }, (id) => {
+      if (chrome.runtime.lastError || id === undefined) {
+        console.warn('[NB] Download failed:', chrome.runtime.lastError && chrome.runtime.lastError.message, url);
+        resolve(null);
+      } else {
+        resolve(id);
+      }
+    });
+  });
+}
+
 async function processQueue(saveFolder) {
   if (isProcessingQueue || downloadQueue.length === 0) return;
   isProcessingQueue = true;
 
-  while (downloadQueue.length > 0) {
-    const item = downloadQueue.shift();
+  try {
+    while (downloadQueue.length > 0) {
+      const item = downloadQueue.shift();
 
-    if (downloadedUrls.has(item.url)) continue;
+      if (downloadedUrls.has(item.url) || failedUrls.has(item.url)) continue;
 
-    downloadedUrls.add(item.url);
+      const seqStr = String(clipSequenceCounter).padStart(3, '0');
+      const dateTimeStr = getFormattedDateTime();
+      const ext = item.isVideo ? 'mp4' : getImageExtension(item.url);
+      const safeFolder = (saveFolder || 'GoogleFlow_Media').replace(/[<>:"|?*\\]/g, '_').replace(/^\/+|\/+$/g, '');
+      const folder = `${safeFolder}/`;
 
-    const seqStr = String(clipSequenceCounter).padStart(3, '0');
-    const dateTimeStr = getFormattedDateTime();
-    const ext = item.isVideo ? 'mp4' : 'jpg';
-    const folder = saveFolder ? `${saveFolder}/` : 'GoogleFlow_Media/';
+      const cleanPrompt = item.promptText || 'Prompt';
+      const filename = `${folder}Clip_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
 
-    const cleanPrompt = item.promptText || 'Prompt';
-    const filename = `${folder}Clip_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
+      const id = await startDownload(item.url, filename);
 
-    clipSequenceCounter++;
-    totalDownloadedCount++;
+      if (id === null) {
+        failedUrls.add(item.url);
+        continue;
+      }
 
-    chrome.downloads.download({
-      url: item.url,
-      filename: filename,
-      conflictAction: 'uniquify'
-    });
+      // Sirf kamyab download par counter badhao
+      downloadedUrls.add(item.url);
+      clipSequenceCounter++;
+      totalDownloadedCount++;
 
-    chrome.storage.local.set({
-      downloadedUrls: Array.from(downloadedUrls),
-      clipSequenceCounter: clipSequenceCounter,
-      totalDownloadedCount: totalDownloadedCount
-    });
+      chrome.storage.local.set({
+        downloadedUrls: Array.from(downloadedUrls),
+        clipSequenceCounter: clipSequenceCounter,
+        totalDownloadedCount: totalDownloadedCount
+      });
 
-    await new Promise(resolve => setTimeout(resolve, 1200));
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+  } finally {
+    isProcessingQueue = false;
   }
-
-  isProcessingQueue = false;
 }
 
 function processAndDownloadMedia(mediaList, saveFolder) {
@@ -79,7 +104,7 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   let newAddedCount = 0;
 
   mediaList.forEach((item) => {
-    if (downloadedUrls.has(item.url)) return;
+    if (downloadedUrls.has(item.url) || failedUrls.has(item.url)) return;
 
     if (item.isGenerating) {
       if (!pendingGeneratingClips.has(item.url)) {
@@ -110,14 +135,29 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   return newAddedCount;
 }
 
-// Safe Message Sender Wrapper to completely prevent "Receiving end does not exist" crashes
+// Safe sender: agar content script page mein nahi hai to khud inject karke dobara try karta hai
 function safeSendTabMessage(tabId, message, callback) {
   chrome.tabs.sendMessage(tabId, message, (response) => {
-    if (chrome.runtime.lastError) {
-      if (callback) callback(null);
+    if (!chrome.runtime.lastError) {
+      if (callback) callback(response);
       return;
     }
-    if (callback) callback(response);
+
+    // Content script missing -> inject karo aur retry karo
+    chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['content.js'] }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('[NB] Inject failed:', chrome.runtime.lastError.message);
+        if (callback) callback(null);
+        return;
+      }
+      chrome.tabs.sendMessage(tabId, message, (retryResponse) => {
+        if (chrome.runtime.lastError) {
+          if (callback) callback(null);
+          return;
+        }
+        if (callback) callback(retryResponse);
+      });
+    });
   });
 }
 
@@ -164,6 +204,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           target: { tabId: tabId },
           func: () => { window.scrollTo({ top: 0, behavior: 'smooth' }); }
         }, () => {
+          // Agar scroll inject fail ho (jaise chrome:// page) to lastError clear kar do
+          void chrome.runtime.lastError;
+
           setTimeout(() => {
             safeSendTabMessage(tabId, {
               action: 'scanAndDownload',
@@ -186,11 +229,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'startMonitoring') {
     chrome.storage.local.set({ isMonitoring: true });
-    
+
     // Auto-Reset on Start
     clipSequenceCounter = 1;
     totalDownloadedCount = 0;
     downloadedUrls.clear();
+    failedUrls.clear();
     downloadQueue = [];
     pendingGeneratingClips.clear();
     chrome.storage.local.set({
@@ -199,7 +243,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       totalDownloadedCount: 0
     });
 
-    chrome.alarms.create('autoMonitorAlarm', { periodInMinutes: 0.1 });
+    chrome.alarms.create('autoMonitorAlarm', { periodInMinutes: 0.5 });
 
     sendResponse({ status: 'Auto Monitoring Active...' });
     return true;
@@ -224,6 +268,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'resetHistory') {
     downloadedUrls.clear();
+    failedUrls.clear();
     clipSequenceCounter = 1;
     totalDownloadedCount = 0;
     downloadQueue = [];
