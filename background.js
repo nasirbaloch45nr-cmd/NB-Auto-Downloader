@@ -8,18 +8,10 @@ let totalDownloadedCount = 0;
 
 let pendingGeneratingClips = new Map();
 
-// Enable side panel on extension icon click
+// Enable sidepanel behavior
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
-
-chrome.action.onClicked.addListener((tab) => {
-  if (chrome.sidePanel && chrome.sidePanel.open) {
-    chrome.sidePanel.open({ windowId: tab.windowId }).catch((err) => {
-      console.log('Side panel open error:', err);
-    });
-  }
-});
 
 chrome.storage.local.get(['downloadedUrls', 'clipSequenceCounter', 'totalDownloadedCount'], (res) => {
   if (res.downloadedUrls) downloadedUrls = new Set(res.downloadedUrls);
@@ -116,36 +108,13 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   return newAddedCount;
 }
 
-function executeMonitoringScan() {
-  chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
-    if (!settings.isMonitoring) return;
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || !tabs[0]) return;
-      const tabId = tabs[0].id;
-
-      chrome.tabs.sendMessage(tabId, {
-        action: 'scanAndDownload',
-        dlVideos: settings.dlVideos ?? true,
-        dlImages: settings.dlImages ?? true
-      }, (response) => {
-        if (chrome.runtime.lastError) return;
-        if (response && response.mediaList) {
-          processAndDownloadMedia(response.mediaList, settings.saveFolder);
-        }
-      });
-    });
-  });
-}
-
-// Chrome Alarm Listener for reliable background monitoring
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'autoMonitorAlarm') {
-    executeMonitoringScan();
-  }
-});
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'autoProcessMedia') {
+    processAndDownloadMedia(request.mediaList, request.saveFolder);
+    sendResponse({ status: 'Processed' });
+    return true;
+  }
+
   if (request.action === 'downloadCurrentPage') {
     chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages'], (settings) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -195,8 +164,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       totalDownloadedCount: 0
     });
 
-    // Alarm interval trigger
-    chrome.alarms.create('autoMonitorAlarm', { periodInMinutes: 0.1 });
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'startContentMonitoring' });
+      }
+    });
 
     sendResponse({ status: 'Auto Monitoring Active...' });
     return true;
@@ -204,7 +176,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'stopMonitoring') {
     chrome.storage.local.set({ isMonitoring: false });
-    chrome.alarms.clear('autoMonitorAlarm');
+    
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'stopContentMonitoring' });
+      }
+    });
+
     sendResponse({ status: 'Monitoring Stopped' });
     return true;
   }
