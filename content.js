@@ -101,11 +101,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
+    // CORRECT SORTING: Bottom-to-Top (neeche se upar), aur row ke andar Right-to-Left (daayein se baayein)
     rawList.sort((a, b) => {
       if (Math.abs(b.top - a.top) > 40) {
-        return b.top - a.top;
+        return b.top - a.top; // Bottom-most row first
       }
-      return a.left - b.left;
+      return b.left - a.left; // Right to Left inside the row
     });
 
     sendResponse({ mediaList: rawList });
