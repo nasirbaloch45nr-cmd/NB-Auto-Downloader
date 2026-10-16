@@ -3,7 +3,6 @@
 function cleanPromptText(element, parentCard) {
   let rawText = '';
 
-  // 1. Specific prompt input / display element search karein
   if (parentCard) {
     const promptElem = parentCard.querySelector('[class*="prompt"], [class*="title"], [class*="caption"], p, span');
     if (promptElem && promptElem.innerText && promptElem.innerText.trim().length > 0) {
@@ -19,7 +18,6 @@ function cleanPromptText(element, parentCard) {
 
   let clean = rawText.trim();
 
-  // Garbage patterns aur Google UI words remove karein
   const garbageWords = [
     /Tile_displaying_a_users_image/gi,
     /Tile displaying a user's image/gi,
@@ -45,7 +43,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scanAndDownload') {
     const rawList = [];
 
-    // Helper function for screen Y/X position
     function getPos(elem) {
       const rect = elem.getBoundingClientRect();
       return {
@@ -54,7 +51,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
     }
 
-    // Videos scan
     if (request.dlVideos) {
       const videos = document.querySelectorAll('video');
       videos.forEach((vid, index) => {
@@ -80,7 +76,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
-    // Images scan
     if (request.dlImages) {
       const images = document.querySelectorAll('img');
       images.forEach((img, index) => {
@@ -106,12 +101,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
-    // Chronological Bottom-to-Top Grid Sorting (Natural Flow Order)
     rawList.sort((a, b) => {
       if (Math.abs(b.top - a.top) > 40) {
-        return b.top - a.top; // Bottom-most row first
+        return b.top - a.top;
       }
-      return a.left - b.left; // Left to Right inside row
+      return a.left - b.left;
     });
 
     sendResponse({ mediaList: rawList });
