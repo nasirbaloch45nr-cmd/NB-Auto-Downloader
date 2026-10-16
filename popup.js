@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const counterDownloaded = document.getElementById('counterDownloaded');
   const nextClipSeq = document.getElementById('nextClipSeq');
 
-  // Sync Live Counter with storage
   function updateUIStats() {
     chrome.storage.local.get(['totalDownloadedCount', 'clipSequenceCounter'], (res) => {
       counterDownloaded.textContent = res.totalDownloadedCount || 0;
@@ -82,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.runtime.sendMessage({ action: 'startMonitoring' }, (response) => {
           monitorBtn.textContent = 'Stop Auto Monitoring';
           monitorBtn.className = 'btn btn-danger';
-          statusText.textContent = 'Status: Monitoring Active...';
+          statusTest.textContent = 'Status: Auto Monitoring Active...';
         });
       } else {
         chrome.runtime.sendMessage({ action: 'stopMonitoring' }, (response) => {
@@ -103,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   clearLogBtn.addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'resetHistory' }, (response) => {
-      statusText.textContent = 'History & counter completely reset!';
+      statusText.textContent = 'History & sequence reset!';
       updateUIStats();
     });
   });
