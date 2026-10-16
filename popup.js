@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.runtime.sendMessage({ action: 'startMonitoring' }, (response) => {
           monitorBtn.textContent = 'Stop Auto Monitoring';
           monitorBtn.className = 'btn btn-danger';
-          statusTest.textContent = 'Status: Auto Monitoring Active...';
+          statusText.textContent = 'Status: Auto Monitoring Active...';
         });
       } else {
         chrome.runtime.sendMessage({ action: 'stopMonitoring' }, (response) => {
