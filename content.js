@@ -1,5 +1,7 @@
 // File Name: content.js
 
+let liveMonitorInterval = null;
+
 function cleanPromptText(element, parentCard) {
   let rawText = '';
 
@@ -39,77 +41,127 @@ function cleanPromptText(element, parentCard) {
   return clean.slice(0, 40) || 'Prompt';
 }
 
+function scanMediaOnPage(dlVideos, dlImages) {
+  const rawList = [];
+
+  function getPos(elem) {
+    const rect = elem.getBoundingClientRect();
+    return {
+      top: rect.top + window.scrollY,
+      left: rect.left + window.scrollX
+    };
+  }
+
+  if (dlVideos) {
+    const videos = document.querySelectorAll('video');
+    videos.forEach((vid, index) => {
+      if (vid.src && vid.src.startsWith('http')) {
+        const parentCard = vid.closest('[class*="card"], [class*="item"], [class*="tile"], div') || vid.parentElement;
+        const pos = getPos(vid);
+
+        const isGenerating = parentCard ? (
+          parentCard.innerText.toLowerCase().includes('generating') || 
+          parentCard.querySelector('[class*="spinner"], [class*="loading"], [class*="progress"]') !== null
+        ) : false;
+
+        rawList.push({
+          url: vid.src,
+          isVideo: true,
+          promptText: cleanPromptText(vid, parentCard),
+          isGenerating: isGenerating,
+          top: pos.top,
+          left: pos.left,
+          domIndex: index
+        });
+      }
+    });
+  }
+
+  if (dlImages) {
+    const images = document.querySelectorAll('img');
+    images.forEach((img, index) => {
+      if (img.src && img.src.startsWith('http') && !img.src.includes('avatar') && !img.src.includes('icon')) {
+        const parentCard = img.closest('[class*="card"], [class*="item"], [class*="tile"], div') || img.parentElement;
+        const pos = getPos(img);
+
+        const isGenerating = parentCard ? (
+          parentCard.innerText.toLowerCase().includes('generating') || 
+          parentCard.querySelector('[class*="spinner"], [class*="loading"]') !== null
+        ) : false;
+
+        rawList.push({
+          url: img.src,
+          isVideo: false,
+          promptText: cleanPromptText(img, parentCard),
+          isGenerating: isGenerating,
+          top: pos.top,
+          left: pos.left,
+          domIndex: index
+        });
+      }
+    });
+  }
+
+  // Exact Grid Sorting: Bottom-to-Top, Right-to-Left
+  rawList.sort((a, b) => {
+    if (Math.abs(b.top - a.top) > 40) {
+      return b.top - a.top;
+    }
+    return b.left - a.left;
+  });
+
+  return rawList;
+}
+
+// Live Monitoring Loop for Tab Context
+function startTabMonitoring() {
+  if (liveMonitorInterval) clearInterval(liveMonitorInterval);
+
+  liveMonitorInterval = setInterval(() => {
+    chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
+      if (!settings.isMonitoring) {
+        clearInterval(liveMonitorInterval);
+        liveMonitorInterval = null;
+        return;
+      }
+
+      const mediaList = scanMediaOnPage(settings.dlVideos ?? true, settings.dlImages ?? true);
+      if (mediaList && mediaList.length > 0) {
+        chrome.runtime.sendMessage({
+          action: 'autoProcessMedia',
+          mediaList: mediaList,
+          saveFolder: settings.saveFolder
+        });
+      }
+    });
+  }, 3000);
+}
+
+// Check on load if monitoring is active
+chrome.storage.local.get(['isMonitoring'], (res) => {
+  if (res.isMonitoring) {
+    startTabMonitoring();
+  }
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scanAndDownload') {
-    const rawList = [];
-
-    function getPos(elem) {
-      const rect = elem.getBoundingClientRect();
-      return {
-        top: rect.top + window.scrollY,
-        left: rect.left + window.scrollX
-      };
-    }
-
-    if (request.dlVideos) {
-      const videos = document.querySelectorAll('video');
-      videos.forEach((vid, index) => {
-        if (vid.src && vid.src.startsWith('http')) {
-          const parentCard = vid.closest('[class*="card"], [class*="item"], [class*="tile"], div') || vid.parentElement;
-          const pos = getPos(vid);
-
-          const isGenerating = parentCard ? (
-            parentCard.innerText.toLowerCase().includes('generating') || 
-            parentCard.querySelector('[class*="spinner"], [class*="loading"], [class*="progress"]') !== null
-          ) : false;
-
-          rawList.push({
-            url: vid.src,
-            isVideo: true,
-            promptText: cleanPromptText(vid, parentCard),
-            isGenerating: isGenerating,
-            top: pos.top,
-            left: pos.left,
-            domIndex: index
-          });
-        }
-      });
-    }
-
-    if (request.dlImages) {
-      const images = document.querySelectorAll('img');
-      images.forEach((img, index) => {
-        if (img.src && img.src.startsWith('http') && !img.src.includes('avatar') && !img.src.includes('icon')) {
-          const parentCard = img.closest('[class*="card"], [class*="item"], [class*="tile"], div') || img.parentElement;
-          const pos = getPos(img);
-
-          const isGenerating = parentCard ? (
-            parentCard.innerText.toLowerCase().includes('generating') || 
-            parentCard.querySelector('[class*="spinner"], [class*="loading"]') !== null
-          ) : false;
-
-          rawList.push({
-            url: img.src,
-            isVideo: false,
-            promptText: cleanPromptText(img, parentCard),
-            isGenerating: isGenerating,
-            top: pos.top,
-            left: pos.left,
-            domIndex: index
-          });
-        }
-      });
-    }
-
-    // Locked Stable Sorting: Bottom-to-Top, Right-to-Left
-    rawList.sort((a, b) => {
-      if (Math.abs(b.top - a.top) > 40) {
-        return b.top - a.top;
-      }
-      return b.left - a.left;
-    });
-
-    sendResponse({ mediaList: rawList });
+    const mediaList = scanMediaOnPage(request.dlVideos, request.dlImages);
+    sendResponse({ mediaList: mediaList });
   }
+
+  if (request.action === 'startContentMonitoring') {
+    startTabMonitoring();
+    sendResponse({ status: 'Tab Monitoring Active' });
+  }
+
+  if (request.action === 'stopContentMonitoring') {
+    if (liveMonitorInterval) {
+      clearInterval(liveMonitorInterval);
+      liveMonitorInterval = null;
+    }
+    sendResponse({ status: 'Tab Monitoring Stopped' });
+  }
+
   return true;
 });
