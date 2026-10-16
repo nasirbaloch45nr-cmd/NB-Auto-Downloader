@@ -1,15 +1,14 @@
 // File Name: background.js
 
-let downloadedUrls = new Set();
+let downloadedUrls = new Set();   // ab isme media-id (ya URL) ki "keys" hain
 let clipSequenceCounter = 1;
 let downloadQueue = [];
 let isProcessingQueue = false;
 let totalDownloadedCount = 0;
 
 let pendingGeneratingClips = new Map();
-let failedUrls = new Set(); // URLs jo download fail hue (dobara dobara retry na hon)
+let failedUrls = new Set();
 
-// Enable sidepanel behavior safely
 try {
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
@@ -33,8 +32,11 @@ function getFormattedDateTime() {
   return `${dd}${mm}${yy}_${hh}${min}${ss}`;
 }
 
+// Flow ke image links "=s1600-rw" par khatam hote hain: -rw = webp
 function getImageExtension(url) {
   const u = url.toLowerCase();
+  const m = u.match(/-r([wjp])(?:[?#]|$)/);
+  if (m) return m[1] === 'w' ? 'webp' : (m[1] === 'j' ? 'jpg' : 'png');
   if (u.includes('.webp')) return 'webp';
   if (u.includes('.png')) return 'png';
   return 'jpg';
@@ -61,26 +63,23 @@ async function processQueue(saveFolder) {
     while (downloadQueue.length > 0) {
       const item = downloadQueue.shift();
 
-      if (downloadedUrls.has(item.url) || failedUrls.has(item.url)) continue;
+      if (downloadedUrls.has(item.key) || failedUrls.has(item.key)) continue;
 
       const seqStr = String(clipSequenceCounter).padStart(3, '0');
       const dateTimeStr = getFormattedDateTime();
       const ext = item.isVideo ? 'mp4' : getImageExtension(item.url);
       const safeFolder = (saveFolder || 'GoogleFlow_Media').replace(/[<>:"|?*\\]/g, '_').replace(/^\/+|\/+$/g, '');
-      const folder = `${safeFolder}/`;
-
       const cleanPrompt = item.promptText || 'Prompt';
-      const filename = `${folder}Clip_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
+      const filename = `${safeFolder}/Clip_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
 
       const id = await startDownload(item.url, filename);
 
       if (id === null) {
-        failedUrls.add(item.url);
+        failedUrls.add(item.key);
         continue;
       }
 
-      // Sirf kamyab download par counter badhao
-      downloadedUrls.add(item.url);
+      downloadedUrls.add(item.key);
       clipSequenceCounter++;
       totalDownloadedCount++;
 
@@ -104,25 +103,23 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   let newAddedCount = 0;
 
   mediaList.forEach((item) => {
-    if (downloadedUrls.has(item.url) || failedUrls.has(item.url)) return;
+    if (downloadedUrls.has(item.key) || failedUrls.has(item.key)) return;
 
     if (item.isGenerating) {
-      if (!pendingGeneratingClips.has(item.url)) {
-        pendingGeneratingClips.set(item.url, now);
+      if (!pendingGeneratingClips.has(item.key)) {
+        pendingGeneratingClips.set(item.key, now);
       }
-      const firstSeen = pendingGeneratingClips.get(item.url);
-      const elapsedSeconds = (now - firstSeen) / 1000;
-
+      const elapsedSeconds = (now - pendingGeneratingClips.get(item.key)) / 1000;
       if (elapsedSeconds < 30) {
         return;
       } else {
-        pendingGeneratingClips.delete(item.url);
+        pendingGeneratingClips.delete(item.key);
       }
     } else {
-      pendingGeneratingClips.delete(item.url);
+      pendingGeneratingClips.delete(item.key);
     }
 
-    if (!downloadQueue.some(q => q.url === item.url)) {
+    if (!downloadQueue.some(q => q.key === item.key)) {
       downloadQueue.push(item);
       newAddedCount++;
     }
@@ -135,7 +132,7 @@ function processAndDownloadMedia(mediaList, saveFolder) {
   return newAddedCount;
 }
 
-// Safe sender: agar content script page mein nahi hai to khud inject karke dobara try karta hai
+// Content script na mile to khud inject karke dobara try karta hai
 function safeSendTabMessage(tabId, message, callback) {
   chrome.tabs.sendMessage(tabId, message, (response) => {
     if (!chrome.runtime.lastError) {
@@ -143,7 +140,6 @@ function safeSendTabMessage(tabId, message, callback) {
       return;
     }
 
-    // Content script missing -> inject karo aur retry karo
     chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['content.js'] }, () => {
       if (chrome.runtime.lastError) {
         console.warn('[NB] Inject failed:', chrome.runtime.lastError.message);
@@ -167,10 +163,11 @@ function executeMonitoringScan() {
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs || !tabs[0]) return;
-      const tabId = tabs[0].id;
 
-      safeSendTabMessage(tabId, {
+      // Monitoring mein scroll nahi hota (sirf jo nazar aa raha hai)
+      safeSendTabMessage(tabs[0].id, {
         action: 'scanAndDownload',
+        deepScan: false,
         dlVideos: settings.dlVideos ?? true,
         dlImages: settings.dlImages ?? true
       }, (response) => {
@@ -182,7 +179,6 @@ function executeMonitoringScan() {
   });
 }
 
-// Alarm Listener for background check
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'autoMonitorAlarm') {
     executeMonitoringScan();
@@ -198,29 +194,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
 
-        const tabId = tabs[0].id;
-
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          func: () => { window.scrollTo({ top: 0, behavior: 'smooth' }); }
-        }, () => {
-          // Agar scroll inject fail ho (jaise chrome:// page) to lastError clear kar do
-          void chrome.runtime.lastError;
-
-          setTimeout(() => {
-            safeSendTabMessage(tabId, {
-              action: 'scanAndDownload',
-              dlVideos: settings.dlVideos ?? true,
-              dlImages: settings.dlImages ?? true
-            }, (response) => {
-              if (!response || !response.mediaList) {
-                sendResponse({ status: 'Page reload karein ya content script load nahi hai!' });
-              } else {
-                const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
-                sendResponse({ status: count > 0 ? `${count} clips added to queue!` : 'No ready media found' });
-              }
-            });
-          }, 800);
+        // deepScan: content script khud poori grid scroll karke saare tiles jama karti hai
+        safeSendTabMessage(tabs[0].id, {
+          action: 'scanAndDownload',
+          deepScan: true,
+          dlVideos: settings.dlVideos ?? true,
+          dlImages: settings.dlImages ?? true
+        }, (response) => {
+          if (!response || !response.mediaList) {
+            sendResponse({ status: 'Page reload karein ya content script load nahi hai!' });
+          } else {
+            const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
+            sendResponse({ status: count > 0 ? `${count} clips added to queue!` : 'No new media found' });
+          }
         });
       });
     });
@@ -230,7 +216,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startMonitoring') {
     chrome.storage.local.set({ isMonitoring: true });
 
-    // Auto-Reset on Start
     clipSequenceCounter = 1;
     totalDownloadedCount = 0;
     downloadedUrls.clear();
