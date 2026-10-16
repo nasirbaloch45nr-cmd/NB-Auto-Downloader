@@ -101,7 +101,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
 
-    // LOCKED & STABLE SORTING: Bottom-to-Top, Right-to-Left
+    // Locked Stable Sorting: Bottom-to-Top, Right-to-Left
     rawList.sort((a, b) => {
       if (Math.abs(b.top - a.top) > 40) {
         return b.top - a.top;
