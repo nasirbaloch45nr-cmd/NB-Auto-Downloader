@@ -8,7 +8,6 @@
     "storage",
     "activeTab",
     "scripting",
-    "alarms",
     "sidePanel"
   ],
   "host_permissions": [
