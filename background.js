@@ -96,14 +96,25 @@ async function processQueue(saveFolder) {
   }
 }
 
-function processAndDownloadMedia(mediaList, saveFolder) {
-  if (!mediaList || mediaList.length === 0) return 0;
+function processAndDownloadMedia(mediaList, saveFolder, ratioFilter) {
+  const stats = { found: 0, videos: 0, images: 0, added: 0, already: 0, waiting: 0, ratioSkipped: 0, failed: 0 };
+  if (!mediaList || mediaList.length === 0) return stats;
 
   const now = Date.now();
-  let newAddedCount = 0;
+  stats.found = mediaList.length;
 
   mediaList.forEach((item) => {
-    if (downloadedUrls.has(item.key) || failedUrls.has(item.key)) return;
+    if (item.isVideo) stats.videos++; else stats.images++;
+
+    if (downloadedUrls.has(item.key)) { stats.already++; return; }
+    if (failedUrls.has(item.key)) { stats.failed++; return; }
+
+    // Aspect ratio filter ("any" = koi filter nahi)
+    if (ratioFilter && ratioFilter !== 'any' && item.ratio &&
+        item.ratio !== 'unknown' && item.ratio !== ratioFilter) {
+      stats.ratioSkipped++;
+      return;
+    }
 
     if (item.isGenerating) {
       if (!pendingGeneratingClips.has(item.key)) {
@@ -111,6 +122,7 @@ function processAndDownloadMedia(mediaList, saveFolder) {
       }
       const elapsedSeconds = (now - pendingGeneratingClips.get(item.key)) / 1000;
       if (elapsedSeconds < 30) {
+        stats.waiting++;
         return;
       } else {
         pendingGeneratingClips.delete(item.key);
@@ -121,15 +133,26 @@ function processAndDownloadMedia(mediaList, saveFolder) {
 
     if (!downloadQueue.some(q => q.key === item.key)) {
       downloadQueue.push(item);
-      newAddedCount++;
+      stats.added++;
     }
   });
 
-  if (newAddedCount > 0) {
+  if (stats.added > 0) {
     processQueue(saveFolder);
   }
 
-  return newAddedCount;
+  return stats;
+}
+
+// Panel ke status ke liye scan ki report
+function formatScanStatus(s) {
+  if (s.found === 0) return 'Koi media nahi mila (page par clips nazar aa rahe hain?)';
+  const parts = [`Found ${s.found} (${s.videos} video, ${s.images} image)`, `queued ${s.added}`];
+  if (s.already) parts.push(`already done ${s.already}`);
+  if (s.waiting) parts.push(`generating/waiting ${s.waiting}`);
+  if (s.ratioSkipped) parts.push(`ratio skipped ${s.ratioSkipped}`);
+  if (s.failed) parts.push(`failed ${s.failed}`);
+  return parts.join(' | ');
 }
 
 // Content script na mile to khud inject karke dobara try karta hai
@@ -158,7 +181,7 @@ function safeSendTabMessage(tabId, message, callback) {
 }
 
 function executeMonitoringScan() {
-  chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages'], (settings) => {
+  chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages', 'ratioFilter'], (settings) => {
     if (!settings.isMonitoring) return;
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -172,7 +195,7 @@ function executeMonitoringScan() {
         dlImages: settings.dlImages ?? true
       }, (response) => {
         if (response && response.mediaList) {
-          processAndDownloadMedia(response.mediaList, settings.saveFolder);
+          processAndDownloadMedia(response.mediaList, settings.saveFolder, settings.ratioFilter);
         }
       });
     });
@@ -187,7 +210,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'downloadCurrentPage') {
-    chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages'], (settings) => {
+    chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages', 'ratioFilter'], (settings) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs || !tabs[0]) {
           sendResponse({ status: 'No active tab!' });
@@ -204,8 +227,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           if (!response || !response.mediaList) {
             sendResponse({ status: 'Page reload karein ya content script load nahi hai!' });
           } else {
-            const count = processAndDownloadMedia(response.mediaList, settings.saveFolder);
-            sendResponse({ status: count > 0 ? `${count} clips added to queue!` : 'No new media found' });
+            const stats = processAndDownloadMedia(response.mediaList, settings.saveFolder, settings.ratioFilter);
+            sendResponse({ status: formatScanStatus(stats) });
           }
         });
       });
