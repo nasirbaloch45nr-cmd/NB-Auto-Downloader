@@ -112,11 +112,17 @@
       background: #0f172a;
       border-radius: 6px;
       border: 1px solid #1e293b;
+      line-height: 1.4;
     }
     .checkbox-group {
       display: flex;
       gap: 16px;
       font-size: 13px;
+    }
+    .note {
+      font-size: 11px;
+      color: #8a99ad;
+      line-height: 1.4;
     }
   </style>
 </head>
@@ -125,7 +131,7 @@
   <div class="container">
     <div class="header">
       <span>👑 NB Auto Downloader</span>
-      <span class="version-badge" id="appVersion">v1.4</span>
+      <span class="version-badge" id="appVersion">v1.5</span>
     </div>
 
     <!-- Live Counter Box -->
@@ -152,26 +158,17 @@
 
     <div class="card">
       <div class="section-title">Media Controls</div>
-      
-      <label style="font-size: 11px; color: #a0aec0;">Aspect Ratio:</label>
+
+      <label style="font-size: 11px; color: #a0aec0;">Download only this aspect ratio:</label>
       <select id="aspectRatioSelect">
+        <option value="any" selected>All ratios (no filter)</option>
         <option value="16:9">16:9 (YouTube)</option>
         <option value="9:16">9:16 (TikTok / Shorts)</option>
         <option value="1:1">1:1 (Square)</option>
         <option value="4:3">4:3 (Standard)</option>
       </select>
 
-      <label style="font-size: 11px; color: #a0aec0;">Video Quality:</label>
-      <select id="videoQualitySelect">
-        <option value="720p">720p HD</option>
-        <option value="1080p">1080p Full HD</option>
-      </select>
-
-      <label style="font-size: 11px; color: #a0aec0;">Image Quality:</label>
-      <select id="imageQualitySelect">
-        <option value="1k">1K Standard</option>
-        <option value="2k">2K High Quality</option>
-      </select>
+      <div class="note">Quality: Flow ki original file hi download hoti hai (video 720p, image poori size).</div>
     </div>
 
     <div class="card" style="margin-top: auto;">
