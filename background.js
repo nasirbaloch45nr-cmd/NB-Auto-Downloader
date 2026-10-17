@@ -9,6 +9,12 @@ let totalDownloadedCount = 0;
 let pendingGeneratingClips = new Map();
 let failedUrls = new Set();
 
+// Panel ke "Remaining Clips" ke liye: queue mein baqi + jo abhi process ho rahi hai
+function updatePending() {
+  chrome.storage.local.set({ pendingCount: downloadQueue.length + (isProcessingQueue ? 1 : 0) });
+}
+updatePending(); // service worker restart hone par queue khali hoti hai
+
 try {
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
@@ -62,6 +68,7 @@ async function processQueue(saveFolder) {
   try {
     while (downloadQueue.length > 0) {
       const item = downloadQueue.shift();
+      updatePending();
 
       if (downloadedUrls.has(item.key) || failedUrls.has(item.key)) continue;
 
@@ -93,6 +100,7 @@ async function processQueue(saveFolder) {
     }
   } finally {
     isProcessingQueue = false;
+    updatePending();
   }
 }
 
@@ -140,6 +148,7 @@ function processAndDownloadMedia(mediaList, saveFolder, ratioFilter) {
   if (stats.added > 0) {
     processQueue(saveFolder);
   }
+  updatePending();
 
   return stats;
 }
@@ -245,6 +254,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     failedUrls.clear();
     downloadQueue = [];
     pendingGeneratingClips.clear();
+    updatePending();
     chrome.storage.local.set({
       downloadedUrls: [],
       clipSequenceCounter: 1,
@@ -269,6 +279,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     totalDownloadedCount = 0;
     downloadQueue = [];
     pendingGeneratingClips.clear();
+    updatePending();
     chrome.storage.local.set({ clipSequenceCounter: 1, totalDownloadedCount: 0 });
     sendResponse({ status: 'Counter Reset to 001' });
     return true;
@@ -281,6 +292,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     totalDownloadedCount = 0;
     downloadQueue = [];
     pendingGeneratingClips.clear();
+    updatePending();
     chrome.storage.local.set({
       downloadedUrls: [],
       clipSequenceCounter: 1,
