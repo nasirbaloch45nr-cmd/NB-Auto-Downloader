@@ -10,16 +10,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearLogBtn = document.getElementById('clearLogBtn');
   const statusText = document.getElementById('statusText');
   const counterDownloaded = document.getElementById('counterDownloaded');
-  const nextClipSeq = document.getElementById('nextClipSeq');
+  const remainingClips = document.getElementById('remainingClips');
+  const remainingBox = document.getElementById('remainingBox');
 
   // Version khud manifest se
   document.getElementById('appVersion').textContent = 'v' + chrome.runtime.getManifest().version;
 
   function updateUIStats() {
-    chrome.storage.local.get(['totalDownloadedCount', 'clipSequenceCounter'], (res) => {
+    chrome.storage.local.get(['totalDownloadedCount', 'clipSequenceCounter', 'pendingCount'], (res) => {
       counterDownloaded.textContent = res.totalDownloadedCount || 0;
-      const seq = res.clipSequenceCounter || 1;
-      nextClipSeq.textContent = String(seq).padStart(3, '0');
+      remainingClips.textContent = res.pendingCount || 0;
+      // Next sequence ab hover karne par (tooltip) dikhta hai
+      remainingBox.title = 'Next sequence: ' + String(res.clipSequenceCounter || 1).padStart(3, '0');
     });
   }
 
