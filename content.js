@@ -5,6 +5,17 @@ if (!window.__nbAutoDownloaderLoaded) {
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+  // Width/height se ratio ka naam nikalta hai (4% tak farq maaf)
+  function ratioLabel(w, h) {
+    if (!w || !h) return 'unknown';
+    const r = w / h;
+    const known = [['16:9', 16 / 9], ['9:16', 9 / 16], ['1:1', 1], ['4:3', 4 / 3], ['3:4', 3 / 4]];
+    for (const [label, value] of known) {
+      if (Math.abs(r - value) / value < 0.04) return label;
+    }
+    return 'other';
+  }
+
   function sanitize(text) {
     return (text || '')
       .replace(/[^a-zA-Z0-9\s_-]/g, '')
@@ -80,12 +91,15 @@ if (!window.__nbAutoDownloaderLoaded) {
       if (old && !old.isGenerating) return;
 
       const r = el.getBoundingClientRect();
+      const w = isVideo ? el.videoWidth : el.naturalWidth;
+      const h = isVideo ? el.videoHeight : el.naturalHeight;
       found.set(key, {
         key: key,
         url: url,
         isVideo: isVideo,
         promptText: getTitle(el, tile),
         isGenerating: isGenerating,
+        ratio: ratioLabel(w || r.width, h || r.height),
         top: base + (r.top - scTop),
         left: r.left
       });
