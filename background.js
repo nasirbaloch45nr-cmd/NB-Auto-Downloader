@@ -193,23 +193,15 @@ function safeSendTabMessage(tabId, message, callback) {
   });
 }
 
+// Backup: har 30 second mein Flow ke saare tabs ko "ab scan karo" ka signal.
+// Scan content script khud karti hai (order ke rules ke saath), isliye yahan se seedha download nahi hota.
 function executeMonitoringScan() {
-  chrome.storage.local.get(['isMonitoring', 'saveFolder', 'dlVideos', 'dlImages', 'ratioFilter'], (settings) => {
+  chrome.storage.local.get(['isMonitoring'], (settings) => {
     if (!settings.isMonitoring) return;
 
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || !tabs[0]) return;
-
-      // Monitoring mein scroll nahi hota (sirf jo nazar aa raha hai)
-      safeSendTabMessage(tabs[0].id, {
-        action: 'scanAndDownload',
-        deepScan: false,
-        dlVideos: settings.dlVideos ?? true,
-        dlImages: settings.dlImages ?? true
-      }, (response) => {
-        if (response && response.mediaList) {
-          processAndDownloadMedia(response.mediaList, settings.saveFolder, settings.ratioFilter);
-        }
+    chrome.tabs.query({ url: 'https://flow.google.com/*' }, (tabs) => {
+      (tabs || []).forEach((tab) => {
+        safeSendTabMessage(tab.id, { action: 'liveScanNow' }, () => {});
       });
     });
   });
