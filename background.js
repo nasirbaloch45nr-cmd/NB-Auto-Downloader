@@ -8,6 +8,7 @@ let totalDownloadedCount = 0;
 
 let pendingGeneratingClips = new Map();
 let failedUrls = new Set();
+let currentKey = null; // jo item abhi download ho raha hai
 
 // Panel ke "Remaining Clips" ke liye: queue mein baqi + jo abhi process ho rahi hai
 function updatePending() {
@@ -69,6 +70,7 @@ async function processQueue(saveFolder) {
     while (downloadQueue.length > 0) {
       const item = downloadQueue.shift();
       updatePending();
+      currentKey = item.key;
 
       if (downloadedUrls.has(item.key) || failedUrls.has(item.key)) continue;
 
@@ -77,7 +79,8 @@ async function processQueue(saveFolder) {
       const ext = item.isVideo ? 'mp4' : getImageExtension(item.url);
       const safeFolder = (saveFolder || 'GoogleFlow_Media').replace(/[<>:"|?*\\]/g, '_').replace(/^\/+|\/+$/g, '');
       const cleanPrompt = item.promptText || 'Prompt';
-      const filename = `${safeFolder}/Clip_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
+      const prefix = item.isVideo ? 'Clip' : 'Image';
+      const filename = `${safeFolder}/${prefix}_${seqStr}_${cleanPrompt}_${dateTimeStr}.${ext}`;
 
       const id = await startDownload(item.url, filename);
 
@@ -100,6 +103,7 @@ async function processQueue(saveFolder) {
     }
   } finally {
     isProcessingQueue = false;
+    currentKey = null;
     updatePending();
   }
 }
@@ -114,7 +118,7 @@ function processAndDownloadMedia(mediaList, saveFolder, ratioFilter) {
   mediaList.forEach((item) => {
     if (item.isVideo) stats.videos++; else stats.images++;
 
-    if (downloadedUrls.has(item.key)) { stats.already++; return; }
+    if (downloadedUrls.has(item.key) || item.key === currentKey) { stats.already++; return; }
     if (failedUrls.has(item.key)) { stats.failed++; return; }
 
     // Aspect ratio filter ("any" = koi filter nahi)
@@ -218,6 +222,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // LIVE signal: content script ne naya tayyar clip/image dekha -> foran queue mein
+  if (request.action === 'liveMedia') {
+    chrome.storage.local.get(['isMonitoring', 'saveFolder', 'ratioFilter'], (settings) => {
+      if (!settings.isMonitoring) return;
+      processAndDownloadMedia(request.mediaList, settings.saveFolder, settings.ratioFilter);
+    });
+    return false;
+  }
+
   if (request.action === 'downloadCurrentPage') {
     chrome.storage.local.get(['saveFolder', 'dlVideos', 'dlImages', 'ratioFilter'], (settings) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
