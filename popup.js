@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dlVideosInput = document.getElementById('dlVideos');
   const dlImagesInput = document.getElementById('dlImages');
   const aspectRatioSelect = document.getElementById('aspectRatioSelect');
+  const keepOrderInput = document.getElementById('keepOrder');
 
   const downloadBtn = document.getElementById('downloadBtn');
   const monitorBtn = document.getElementById('monitorBtn');
@@ -29,12 +30,13 @@ document.addEventListener('DOMContentLoaded', () => {
   updateUIStats();
 
   chrome.storage.local.get([
-    'saveFolder', 'dlVideos', 'dlImages', 'ratioFilter', 'isMonitoring'
+    'saveFolder', 'dlVideos', 'dlImages', 'ratioFilter', 'keepOrder', 'isMonitoring'
   ], (res) => {
     if (res.saveFolder) saveFolderInput.value = res.saveFolder;
     if (res.dlVideos !== undefined) dlVideosInput.checked = res.dlVideos;
     if (res.dlImages !== undefined) dlImagesInput.checked = res.dlImages;
     if (res.ratioFilter) aspectRatioSelect.value = res.ratioFilter;
+    if (res.keepOrder !== undefined) keepOrderInput.checked = res.keepOrder;
 
     if (res.isMonitoring) {
       monitorBtn.textContent = 'Stop Auto Monitoring';
@@ -48,7 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
       saveFolder: saveFolderInput.value.trim() || 'GoogleFlow_Media',
       dlVideos: dlVideosInput.checked,
       dlImages: dlImagesInput.checked,
-      ratioFilter: aspectRatioSelect.value
+      ratioFilter: aspectRatioSelect.value,
+      keepOrder: keepOrderInput.checked
     });
   }
 
@@ -56,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dlVideosInput.addEventListener('change', saveSettings);
   dlImagesInput.addEventListener('change', saveSettings);
   aspectRatioSelect.addEventListener('change', saveSettings);
+  keepOrderInput.addEventListener('change', saveSettings);
 
   downloadBtn.addEventListener('click', () => {
     saveSettings();
