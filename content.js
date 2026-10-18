@@ -165,6 +165,11 @@ if (!window.__nbAutoDownloaderLoaded) {
   }
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'liveScanNow') {
+      scheduleLiveScan(0);
+      sendResponse({ ok: true });
+      return false;
+    }
     if (request.action !== 'scanAndDownload') return false;
     scan(request)
       .then((mediaList) => sendResponse({ mediaList: mediaList }))
@@ -184,30 +189,63 @@ if (!window.__nbAutoDownloaderLoaded) {
   let liveObserver = null;
   const sentKeys = new Set();
 
+  const HOLD_MAX_MS = 6 * 60 * 1000;   // order ke liye zyada se zyada itna intezar
+  const heldSince = new Map();
+
+  // Wo tiles jo abhi generate ho rahe hain (pending overlay wale)
+  function collectPendingTiles() {
+    const sc = getScroller();
+    const isDoc = sc === document.scrollingElement || sc === document.documentElement;
+    const scTop = isDoc ? 0 : sc.getBoundingClientRect().top;
+    const base = sc.scrollTop || 0;
+    const list = [];
+    document.querySelectorAll('flow-grid-tile-container').forEach((tile) => {
+      if (!tile.querySelector('flow-pending-tile:not(.fading-out)')) return;
+      const r = tile.getBoundingClientRect();
+      list.push({ top: base + (r.top - scTop), left: r.left });
+    });
+    return list;
+  }
+
+  // Grid order: neeche wala pehle (purana), ek row mein right-to-left.
+  // Negative matlab: a, b se purana hai.
+  function olderFirst(a, b) {
+    if (Math.abs(b.top - a.top) > 40) return b.top - a.top;
+    return b.left - a.left;
+  }
+
   async function liveScan() {
     if (!liveOn) return;
     let settings = {};
     try {
-      settings = await new Promise((res) => chrome.storage.local.get(['dlVideos', 'dlImages'], res));
+      settings = await new Promise((res) => chrome.storage.local.get(['dlVideos', 'dlImages', 'keepOrder'], res));
     } catch (e) { return; }
 
     const found = new Map();
     collectVisible(found, { dlVideos: settings.dlVideos ?? true, dlImages: settings.dlImages ?? true });
 
+    // Keep Order: koi purana tile abhi generate ho raha ho to naya tayyar tile ruka rahe
+    const keepOrder = settings.keepOrder !== false;
+    const pending = keepOrder ? collectPendingTiles() : [];
+    const now = Date.now();
+
     const fresh = [];
     found.forEach((item, key) => {
       if (item.isGenerating) return;   // abhi tayyar nahi: agla event dobara check karega
       if (sentKeys.has(key)) return;
+
+      if (keepOrder && pending.some((p) => olderFirst(p, item) < 0)) {
+        if (!heldSince.has(key)) heldSince.set(key, now);
+        if (now - heldSince.get(key) < HOLD_MAX_MS) return;   // purane ka intezar
+      }
+
+      heldSince.delete(key);
       sentKeys.add(key);
       fresh.push(item);
     });
     if (fresh.length === 0) return;
 
-    // Ek saath kai aayein to purani pehle (bottom-to-top, right-to-left)
-    fresh.sort((a, b) => {
-      if (Math.abs(b.top - a.top) > 40) return b.top - a.top;
-      return b.left - a.left;
-    });
+    fresh.sort(olderFirst);   // purani pehle
 
     try {
       chrome.runtime.sendMessage({ action: 'liveMedia', mediaList: fresh });
@@ -226,6 +264,7 @@ if (!window.__nbAutoDownloaderLoaded) {
     if (liveOn) return;
     liveOn = true;
     sentKeys.clear();
+    heldSince.clear();
 
     liveObserver = new MutationObserver(() => scheduleLiveScan(600));
     liveObserver.observe(document.body, {
@@ -252,6 +291,7 @@ if (!window.__nbAutoDownloaderLoaded) {
     clearInterval(livePoll);
     clearTimeout(liveTimer);
     liveTimer = null;
+    heldSince.clear();
   }
 
   try {
