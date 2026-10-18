@@ -174,4 +174,100 @@ if (!window.__nbAutoDownloaderLoaded) {
       });
     return true; // async response
   });
+
+  // =====================================================
+  //  LIVE MONITORING: naya clip/image tayyar hote hi foran signal
+  // =====================================================
+  let liveOn = false;
+  let liveTimer = null;
+  let livePoll = null;
+  let liveObserver = null;
+  const sentKeys = new Set();
+
+  async function liveScan() {
+    if (!liveOn) return;
+    let settings = {};
+    try {
+      settings = await new Promise((res) => chrome.storage.local.get(['dlVideos', 'dlImages'], res));
+    } catch (e) { return; }
+
+    const found = new Map();
+    collectVisible(found, { dlVideos: settings.dlVideos ?? true, dlImages: settings.dlImages ?? true });
+
+    const fresh = [];
+    found.forEach((item, key) => {
+      if (item.isGenerating) return;   // abhi tayyar nahi: agla event dobara check karega
+      if (sentKeys.has(key)) return;
+      sentKeys.add(key);
+      fresh.push(item);
+    });
+    if (fresh.length === 0) return;
+
+    // Ek saath kai aayein to purani pehle (bottom-to-top, right-to-left)
+    fresh.sort((a, b) => {
+      if (Math.abs(b.top - a.top) > 40) return b.top - a.top;
+      return b.left - a.left;
+    });
+
+    try {
+      chrome.runtime.sendMessage({ action: 'liveMedia', mediaList: fresh });
+    } catch (e) { /* extension reload hui hai: Flow page refresh (F5) karein */ }
+  }
+
+  // Throttle: ek waqt mein sirf ek scan pending, mutations ki bharmaar mein bhi chalta rahe
+  function scheduleLiveScan(delay) {
+    if (!liveOn || liveTimer) return;
+    liveTimer = setTimeout(() => { liveTimer = null; liveScan(); }, delay);
+  }
+
+  function onMediaEvent() { scheduleLiveScan(300); }
+
+  function startLive() {
+    if (liveOn) return;
+    liveOn = true;
+    sentKeys.clear();
+
+    liveObserver = new MutationObserver(() => scheduleLiveScan(600));
+    liveObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'class']
+    });
+
+    // img/video ka load hona DOM mutation nahi hota, isliye capture-phase par sunte hain
+    document.addEventListener('load', onMediaEvent, true);
+    document.addEventListener('loadeddata', onMediaEvent, true);
+
+    // Safety net: har 5 second mein bhi ek scan
+    livePoll = setInterval(() => scheduleLiveScan(0), 5000);
+    scheduleLiveScan(0);
+  }
+
+  function stopLive() {
+    liveOn = false;
+    if (liveObserver) { liveObserver.disconnect(); liveObserver = null; }
+    document.removeEventListener('load', onMediaEvent, true);
+    document.removeEventListener('loadeddata', onMediaEvent, true);
+    clearInterval(livePoll);
+    clearTimeout(liveTimer);
+    liveTimer = null;
+  }
+
+  try {
+    chrome.storage.local.get(['isMonitoring'], (res) => {
+      if (res && res.isMonitoring) startLive();
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if (changes.isMonitoring) {
+        if (changes.isMonitoring.newValue) startLive(); else stopLive();
+      }
+      // History reset hui to dobara bhejne ki ijazat
+      if (changes.downloadedUrls) {
+        const nv = changes.downloadedUrls.newValue;
+        if (!nv || nv.length === 0) sentKeys.clear();
+      }
+    });
+  } catch (e) {}
 }
