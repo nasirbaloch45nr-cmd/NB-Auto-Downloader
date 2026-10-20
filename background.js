@@ -16,6 +16,18 @@ function updatePending() {
 }
 updatePending(); // service worker restart hone par queue khali hoti hai
 
+// Download Current: Start Monitoring ki tarah counter 001 se shuru, history saaf
+function resetSession() {
+  clipSequenceCounter = 1;
+  totalDownloadedCount = 0;
+  downloadedUrls.clear();
+  failedUrls.clear();
+  downloadQueue = [];
+  pendingGeneratingClips.clear();
+  chrome.storage.local.set({ downloadedUrls: [], clipSequenceCounter: 1, totalDownloadedCount: 0 });
+  updatePending();
+}
+
 try {
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
@@ -214,6 +226,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Prompt counter: naye generate hone wale tiles (sirf monitoring ke dauran)
+  if (request.action === 'promptsStarted') {
+    chrome.storage.local.get(['isMonitoring', 'promptCount'], (st) => {
+      if (!st.isMonitoring) return;
+      chrome.storage.local.set({ promptCount: (st.promptCount || 0) + (request.count || 0) });
+    });
+    return false;
+  }
+
   // LIVE signal: content script ne naya tayyar clip/image dekha -> foran queue mein
   if (request.action === 'liveMedia') {
     chrome.storage.local.get(['isMonitoring', 'saveFolder', 'ratioFilter'], (settings) => {
@@ -240,7 +261,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }, (response) => {
           if (!response || !response.mediaList) {
             sendResponse({ status: 'Page reload karein ya content script load nahi hai!' });
+          } else if (response.notProject) {
+            sendResponse({ status: 'Pehle kisi project ke andar jayein (Home/Gallery par kaam nahi karta)' });
           } else {
+            resetSession();   // har Download Current par counter 001 se
             const stats = processAndDownloadMedia(response.mediaList, settings.saveFolder, settings.ratioFilter);
             sendResponse({ status: formatScanStatus(stats) });
           }
@@ -251,7 +275,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'startMonitoring') {
-    chrome.storage.local.set({ isMonitoring: true });
+    chrome.storage.local.set({ isMonitoring: true, promptCount: 0, generatingCount: 0, holdUntil: 0 });
 
     clipSequenceCounter = 1;
     totalDownloadedCount = 0;
