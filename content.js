@@ -54,6 +54,13 @@ if (!window.__nbAutoDownloaderLoaded) {
     return cleanPromptText(el, tile);
   }
 
+  // Sirf project ke andar kaam: /project/<id> (edit, tools, trash page nahi). Home/Gallery par nahi.
+  function isProjectPage() {
+    const m = location.pathname.match(/^\/project\/[^/]+(\/.*)?$/);
+    if (!m) return false;
+    return !/^\/(edit|tools|trash)(\/|$)/.test(m[1] || '');
+  }
+
   function getVideoUrl(vid) {
     const source = vid.querySelector('source');
     const candidates = [vid.currentSrc, vid.src, source ? source.src : ''];
@@ -171,6 +178,10 @@ if (!window.__nbAutoDownloaderLoaded) {
       return false;
     }
     if (request.action !== 'scanAndDownload') return false;
+    if (!isProjectPage()) {
+      sendResponse({ mediaList: [], notProject: true });
+      return false;
+    }
     scan(request)
       .then((mediaList) => sendResponse({ mediaList: mediaList }))
       .catch((err) => {
@@ -189,8 +200,17 @@ if (!window.__nbAutoDownloaderLoaded) {
   let liveObserver = null;
   const sentKeys = new Set();
 
-  const HOLD_MAX_MS = 6 * 60 * 1000;   // order ke liye zyada se zyada itna intezar
+  const HOLD_MAX_MS = 60 * 1000;   // order ke liye zyada se zyada 1 minute intezar, phir aage barh jao
   const heldSince = new Map();
+  let seenPending = new WeakSet();
+  let lastPub = { gen: -1, hold: -1 };
+
+  // Panel ke portal ke liye: kitne tiles generate ho rahe hain + hold ka countdown
+  function publishLiveInfo(gen, hold) {
+    if (lastPub.gen === gen && lastPub.hold === hold) return;
+    lastPub = { gen: gen, hold: hold };
+    try { chrome.storage.local.set({ generatingCount: gen, holdUntil: hold }); } catch (e) {}
+  }
 
   // Wo tiles jo abhi generate ho rahe hain (pending overlay wale)
   function collectPendingTiles() {
@@ -202,7 +222,7 @@ if (!window.__nbAutoDownloaderLoaded) {
     document.querySelectorAll('flow-grid-tile-container').forEach((tile) => {
       if (!tile.querySelector('flow-pending-tile:not(.fading-out)')) return;
       const r = tile.getBoundingClientRect();
-      list.push({ top: base + (r.top - scTop), left: r.left });
+      list.push({ top: base + (r.top - scTop), left: r.left, el: tile });
     });
     return list;
   }
@@ -216,17 +236,29 @@ if (!window.__nbAutoDownloaderLoaded) {
 
   async function liveScan() {
     if (!liveOn) return;
+    if (!isProjectPage()) { publishLiveInfo(0, 0); return; }   // project ke bahar kuch nahi
+
     let settings = {};
     try {
       settings = await new Promise((res) => chrome.storage.local.get(['dlVideos', 'dlImages', 'keepOrder'], res));
     } catch (e) { return; }
 
+    // Prompt counter: har naya generate hota tile = ek prompt ka output
+    const pendingTiles = collectPendingTiles();
+    let newPrompts = 0;
+    pendingTiles.forEach((p) => {
+      if (!seenPending.has(p.el)) { seenPending.add(p.el); newPrompts++; }
+    });
+    if (newPrompts > 0) {
+      try { chrome.runtime.sendMessage({ action: 'promptsStarted', count: newPrompts }); } catch (e) {}
+    }
+
     const found = new Map();
     collectVisible(found, { dlVideos: settings.dlVideos ?? true, dlImages: settings.dlImages ?? true });
 
-    // Keep Order: koi purana tile abhi generate ho raha ho to naya tayyar tile ruka rahe
+    // Keep Order: koi purana tile abhi generate ho raha ho to naya tayyar tile ruka rahe (max 1 minute)
     const keepOrder = settings.keepOrder !== false;
-    const pending = keepOrder ? collectPendingTiles() : [];
+    const pending = keepOrder ? pendingTiles : [];
     const now = Date.now();
 
     const fresh = [];
@@ -243,8 +275,14 @@ if (!window.__nbAutoDownloaderLoaded) {
       sentKeys.add(key);
       fresh.push(item);
     });
-    if (fresh.length === 0) return;
 
+    // Jo ruke hue the magar ab nazar nahi aa rahe / chhod diye gaye, unhein hata do
+    heldSince.forEach((t, key) => { if (!found.has(key) || sentKeys.has(key)) heldSince.delete(key); });
+    let earliest = Infinity;
+    heldSince.forEach((t) => { if (t < earliest) earliest = t; });
+    publishLiveInfo(pendingTiles.length, earliest === Infinity ? 0 : earliest + HOLD_MAX_MS);
+
+    if (fresh.length === 0) return;
     fresh.sort(olderFirst);   // purani pehle
 
     try {
@@ -265,6 +303,8 @@ if (!window.__nbAutoDownloaderLoaded) {
     liveOn = true;
     sentKeys.clear();
     heldSince.clear();
+    seenPending = new WeakSet();
+    lastPub = { gen: -1, hold: -1 };
 
     liveObserver = new MutationObserver(() => scheduleLiveScan(600));
     liveObserver.observe(document.body, {
