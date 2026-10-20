@@ -124,6 +124,59 @@
       color: #8a99ad;
       line-height: 1.4;
     }
+
+    .hidden { display: none !important; }
+    .viewbar { display: flex; gap: 6px; align-items: center; }
+    .seg {
+      flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid #2a3547;
+      background: #0f172a; color: #94a3b8; font-size: 12px; cursor: pointer;
+    }
+    .seg.active { background: #00d2ff22; color: #00d2ff; border-color: #00d2ff66; font-weight: bold; }
+    .portal-reopen {
+      width: 38px; padding: 6px 0; border-radius: 6px; border: 1px solid #00d2ff66;
+      background: #00d2ff22; color: #00d2ff; font-size: 15px; cursor: pointer;
+    }
+
+    /* ---------- Portal (animated view) ---------- */
+    .portal {
+      position: fixed; inset: 0; z-index: 100; background: #04060c;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; opacity: 0; transition: opacity .6s ease;
+    }
+    .portal.show { opacity: 1; }
+    .portal-back {
+      position: absolute; top: 12px; left: 12px; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid #00d2ff55; background: #00d2ff14; color: #8fdcff; font-size: 12px; cursor: pointer;
+    }
+    .portal-stage {
+      position: relative; width: min(100vw, 460px); aspect-ratio: 1 / 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .portal.show .portal-stage { animation: portalOpen 1s cubic-bezier(.2, .8, .2, 1); }
+    @keyframes portalOpen {
+      from { transform: scale(.35) rotate(-25deg); opacity: 0; filter: blur(10px); }
+      to   { transform: none; opacity: 1; filter: none; }
+    }
+    .portal-stage video {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+      -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 48%, transparent 70%);
+      mask-image: radial-gradient(circle at 50% 50%, #000 48%, transparent 70%);
+    }
+    .portal-center { position: relative; text-align: center; }
+    .p-number {
+      font-size: 34px; font-weight: 700; color: #eaffff; line-height: 1.1;
+      text-shadow: 0 0 14px #00d2ff, 0 0 30px #00a2ff;
+    }
+    .p-number.long { font-size: 26px; }
+    .p-number.pop { animation: pop .35s ease-out; }
+    @keyframes pop { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+    .p-label { font-size: 9px; letter-spacing: 2px; color: #8fdcff; }
+    .p-sub { font-size: 12px; letter-spacing: 3px; color: #8fdcff; }
+    .p-sub b { color: #fff; font-size: 18px; margin-left: 8px; letter-spacing: 0; text-shadow: 0 0 10px #00d2ff; }
+    .p-status {
+      min-height: 36px; max-width: 320px; text-align: center; font-size: 12px;
+      color: #a0e4ff; padding: 0 16px; line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -134,6 +187,12 @@
       <span class="version-badge" id="appVersion">v1.5</span>
     </div>
 
+    <div class="viewbar">
+      <button id="viewNormal" class="seg">Normal</button>
+      <button id="viewAnimated" class="seg active">Animated</button>
+      <button id="portalReopen" class="portal-reopen hidden" title="Portal wapas kholein">◉</button>
+    </div>
+
     <!-- Live Counter Box -->
     <div class="stats-card">
       <div class="stat-box">
@@ -142,7 +201,7 @@
       </div>
       <div class="stat-box" id="remainingBox" title="Next sequence: 001">
         <span class="stat-number" id="remainingClips">0</span>
-        <span class="stat-label">Remaining Clips</span>
+        <span class="stat-label" id="remainingLabel">Remaining Clips</span>
       </div>
     </div>
 
@@ -182,6 +241,20 @@
     </div>
 
     <div class="status" id="statusText">Status: Ready</div>
+  </div>
+
+  <!-- Portal: Animated view -->
+  <div id="portal" class="portal hidden">
+    <button id="portalBack" class="portal-back" title="Normal panel par wapas">← Normal</button>
+    <div class="portal-stage">
+      <video id="portalVideo" src="portal.mp4" muted loop playsinline preload="auto"></video>
+      <div class="portal-center">
+        <div class="p-number" id="pDownloaded">0</div>
+        <div class="p-label">DOWNLOADED</div>
+      </div>
+    </div>
+    <div class="p-sub"><span id="pSubLabel">PROMPTS</span><b id="pSubValue">0</b></div>
+    <div class="p-status" id="pStatus">Monitoring live…</div>
   </div>
 
   <script src="popup.js"></script>
