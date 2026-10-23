@@ -93,6 +93,7 @@ if (!window.__nbAutoDownloaderLoaded) {
       const mediaId = idHolder ? idHolder.getAttribute('data-media-id') : '';
       const key = mediaId || url.split('?')[0];
       const isGenerating = isTileGenerating(tile, el, isVideo);
+      const pendingOverlay = !!(tile && tile.querySelector && tile.querySelector('flow-pending-tile'));
 
       const old = found.get(key);
       if (old && !old.isGenerating) return;
@@ -106,6 +107,7 @@ if (!window.__nbAutoDownloaderLoaded) {
         isVideo: isVideo,
         promptText: getTitle(el, tile),
         isGenerating: isGenerating,
+        pendingOverlay: pendingOverlay,
         ratio: ratioLabel(w || r.width, h || r.height),
         top: base + (r.top - scTop),
         left: r.left
@@ -202,7 +204,8 @@ if (!window.__nbAutoDownloaderLoaded) {
 
   const HOLD_MAX_MS = 60 * 1000;   // order ke liye zyada se zyada 1 minute intezar, phir aage barh jao
   const heldSince = new Map();
-  let seenPending = new WeakSet();
+  const seenKeys = new Set();     // prompt counter: jo media-keys dekh chuke
+  let prevPending = 0;            // pichli scan mein media ke baghair pending tiles
   let lastPub = { gen: -1, hold: -1 };
 
   // Panel ke portal ke liye: kitne tiles generate ho rahe hain + hold ka countdown
@@ -222,7 +225,8 @@ if (!window.__nbAutoDownloaderLoaded) {
     document.querySelectorAll('flow-grid-tile-container').forEach((tile) => {
       if (!tile.querySelector('flow-pending-tile:not(.fading-out)')) return;
       const r = tile.getBoundingClientRect();
-      list.push({ top: base + (r.top - scTop), left: r.left, el: tile });
+      const hasMedia = !!tile.querySelector('img[data-media-id], video[src], img[src^="https://flow.google.com/asb/"]');
+      list.push({ top: base + (r.top - scTop), left: r.left, el: tile, hasMedia: hasMedia });
     });
     return list;
   }
@@ -243,18 +247,24 @@ if (!window.__nbAutoDownloaderLoaded) {
       settings = await new Promise((res) => chrome.storage.local.get(['dlVideos', 'dlImages', 'keepOrder'], res));
     } catch (e) { return; }
 
-    // Prompt counter: har naya generate hota tile = ek prompt ka output
     const pendingTiles = collectPendingTiles();
-    let newPrompts = 0;
-    pendingTiles.forEach((p) => {
-      if (!seenPending.has(p.el)) { seenPending.add(p.el); newPrompts++; }
+    const found = new Map();
+    collectVisible(found, { dlVideos: settings.dlVideos ?? true, dlImages: settings.dlImages ?? true });
+
+    // Prompt counter: tiles ki "pehchan" par nahi (Flow unhein dobara banati hai), sirf ginti par.
+    // naye prompts = (abhi media ke baghair pending tiles - pichli baar) + (pending se tayyar hote tiles)
+    const noMedia = pendingTiles.filter((p) => !p.hasMedia).length;
+    let transitions = 0;
+    found.forEach((item, key) => {
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      if (item.pendingOverlay) transitions++;   // purane tile jo scroll se aaye unmein overlay nahi hota
     });
+    const newPrompts = Math.max(0, noMedia - prevPending + transitions);
+    prevPending = noMedia;
     if (newPrompts > 0) {
       try { chrome.runtime.sendMessage({ action: 'promptsStarted', count: newPrompts }); } catch (e) {}
     }
-
-    const found = new Map();
-    collectVisible(found, { dlVideos: settings.dlVideos ?? true, dlImages: settings.dlImages ?? true });
 
     // Keep Order: koi purana tile abhi generate ho raha ho to naya tayyar tile ruka rahe (max 1 minute)
     const keepOrder = settings.keepOrder !== false;
@@ -303,7 +313,8 @@ if (!window.__nbAutoDownloaderLoaded) {
     liveOn = true;
     sentKeys.clear();
     heldSince.clear();
-    seenPending = new WeakSet();
+    seenKeys.clear();
+    prevPending = 0;
     lastPub = { gen: -1, hold: -1 };
 
     liveObserver = new MutationObserver(() => scheduleLiveScan(600));
