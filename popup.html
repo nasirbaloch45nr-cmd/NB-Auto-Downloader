@@ -137,46 +137,43 @@
       background: #00d2ff22; color: #00d2ff; font-size: 15px; cursor: pointer;
     }
 
-    /* ---------- Portal (animated view) ---------- */
+    /* ---------- Portal (animated view): poora panel ---------- */
     .portal {
-      position: fixed; inset: 0; z-index: 100; background: #04060c;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 14px; opacity: 0; transition: opacity .6s ease;
+      --hole: calc(0.612 * max(100vw, 56.25vh));   /* video mein black hole ka diameter */
+      position: fixed; inset: 0; z-index: 100; background: #02050a; overflow: hidden;
+      opacity: 0; transition: opacity .6s ease;
     }
     .portal.show { opacity: 1; }
-    .portal-back {
-      position: absolute; top: 12px; left: 12px; padding: 6px 10px; border-radius: 6px;
-      border: 1px solid #00d2ff55; background: #00d2ff14; color: #8fdcff; font-size: 12px; cursor: pointer;
+    .portal-video {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; object-position: 50% 37.3%;
     }
-    .portal-stage {
-      position: relative; width: min(100vw, 460px); aspect-ratio: 1 / 1;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .portal.show .portal-stage { animation: portalOpen 1s cubic-bezier(.2, .8, .2, 1); }
+    .portal.show .portal-video { animation: portalOpen 1.4s cubic-bezier(.2, .8, .2, 1); }
     @keyframes portalOpen {
-      from { transform: scale(.35) rotate(-25deg); opacity: 0; filter: blur(10px); }
+      from { transform: scale(2.2); opacity: 0; filter: blur(14px); }
       to   { transform: none; opacity: 1; filter: none; }
     }
-    .portal-stage video {
-      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-      -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 48%, transparent 70%);
-      mask-image: radial-gradient(circle at 50% 50%, #000 48%, transparent 70%);
+    .portal-back {
+      position: absolute; top: 12px; left: 12px; z-index: 2; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid #00d2ff66; background: #02050acc; color: #8fdcff; font-size: 12px; cursor: pointer;
     }
-    .portal-center { position: relative; text-align: center; }
+    .portal-hole {
+      position: absolute; left: 50%; top: 37.3%; transform: translate(-50%, -50%);
+      width: calc(var(--hole) * 0.8); display: flex; flex-direction: column; align-items: center;
+      text-align: center; gap: 3px;
+    }
     .p-number {
-      font-size: 34px; font-weight: 700; color: #eaffff; line-height: 1.1;
-      text-shadow: 0 0 14px #00d2ff, 0 0 30px #00a2ff;
+      font-size: calc(var(--hole) * 0.18); font-weight: 700; color: #eaffff; line-height: 1.05;
+      text-shadow: 0 0 14px #00d2ff, 0 0 32px #00a2ff;
     }
-    .p-number.long { font-size: 26px; }
+    .p-number.long { font-size: calc(var(--hole) * 0.13); }
     .p-number.pop { animation: pop .35s ease-out; }
-    @keyframes pop { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
-    .p-label { font-size: 9px; letter-spacing: 2px; color: #8fdcff; }
-    .p-sub { font-size: 12px; letter-spacing: 3px; color: #8fdcff; }
-    .p-sub b { color: #fff; font-size: 18px; margin-left: 8px; letter-spacing: 0; text-shadow: 0 0 10px #00d2ff; }
-    .p-status {
-      min-height: 36px; max-width: 320px; text-align: center; font-size: 12px;
-      color: #a0e4ff; padding: 0 16px; line-height: 1.4;
-    }
+    @keyframes pop { 0% { transform: scale(1.3); } 100% { transform: scale(1); } }
+    .p-label { font-size: 10px; letter-spacing: 3px; color: #8fdcff; }
+    .p-sub { margin-top: 10px; font-size: 12px; letter-spacing: 3px; color: #8fdcff; }
+    .p-sub b { color: #fff; font-size: 19px; margin-left: 8px; letter-spacing: 0; text-shadow: 0 0 10px #00d2ff; }
+    .p-status { margin-top: 6px; font-size: 12px; color: #a0e4ff; line-height: 1.4; }
+    .p-note { margin-top: 6px; font-size: 11px; color: #ffb4a8; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -243,18 +240,17 @@
     <div class="status" id="statusText">Status: Ready</div>
   </div>
 
-  <!-- Portal: Animated view -->
+  <!-- Portal: Animated view (poora panel) -->
   <div id="portal" class="portal hidden">
+    <video id="portalVideo" class="portal-video" src="portal.mp4" muted loop playsinline preload="auto"></video>
     <button id="portalBack" class="portal-back" title="Normal panel par wapas">← Normal</button>
-    <div class="portal-stage">
-      <video id="portalVideo" src="portal.mp4" muted loop playsinline preload="auto"></video>
-      <div class="portal-center">
-        <div class="p-number" id="pDownloaded">0</div>
-        <div class="p-label">DOWNLOADED</div>
-      </div>
+    <div class="portal-hole">
+      <div class="p-number" id="pDownloaded">0</div>
+      <div class="p-label">DOWNLOADED</div>
+      <div class="p-sub"><span id="pSubLabel">PROMPTS</span><b id="pSubValue">0</b></div>
+      <div class="p-status" id="pStatus">Monitoring live…</div>
+      <div class="p-note hidden" id="pNote">portal.mp4 load nahi hui — file extension folder mein rakhein</div>
     </div>
-    <div class="p-sub"><span id="pSubLabel">PROMPTS</span><b id="pSubValue">0</b></div>
-    <div class="p-status" id="pStatus">Monitoring live…</div>
   </div>
 
   <script src="popup.js"></script>
