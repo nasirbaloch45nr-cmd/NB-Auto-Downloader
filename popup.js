@@ -28,8 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const pSubLabel = $('pSubLabel');
   const pSubValue = $('pSubValue');
   const pStatus = $('pStatus');
+  const pNote = $('pNote');
 
   $('appVersion').textContent = 'v' + chrome.runtime.getManifest().version;
+
+  // portal.mp4 na mile / na chale to saaf paigham
+  portalVideo.addEventListener('error', () => pNote.classList.remove('hidden'));
+  portalVideo.addEventListener('loadeddata', () => pNote.classList.add('hidden'));
 
   // ---------- state ----------
   let viewMode = 'animated';            // 'normal' | 'animated'
