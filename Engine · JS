@@ -1,0 +1,465 @@
+// engine.js - Prompting engine
+// Prompts Flow ke prompt box mein daal kar Generate dabata hai, har tile ko uske prompt ke number se jorta hai,
+// fail hone par dobara koshish karta hai. Flow ke page ke andar chalta hai; side panel sirf control aur display karta hai.
+// Downloads content.js / background.js karte hain: file ka naam prompt ke number se (Clip_007, Image_012...).
+
+if (!window.__nbEngineLoaded) {
+  window.__nbEngineLoaded = true;
+
+  const NB = (window.NB = window.NB || {});
+  NB.ownedKeys = NB.ownedKeys || new Map();
+
+  // ---- Flow ke page ke selectors (aik hi jagah, taake badalna aasan ho) ----
+  const SEL = {
+    editor: ['.ProseMirror[contenteditable="true"]', '[role="textbox"][contenteditable="true"]'],
+    generate: ['button[aria-label="Start generation"]'],
+    settings: ['button.settings-trigger-button', 'button[aria-label="Settings trigger"]'],
+    tile: 'flow-grid-tile-container',
+    pending: 'flow-pending-tile:not(.fading-out)',
+    media: 'img[data-media-id], img[src^="https://flow.google.com/asb/"]'
+  };
+
+  const FAIL_RE = /fail|error|couldn.?t|could not|try again|blocked|policy|violat|unable|went wrong|not allowed|retry/i;
+  const DEAD_FAIL_MS = 45000;        // na media, na "generating" overlay: itni der baad fail maan lo
+  const DEAD_TEXT_MS = 2500;         // fail jaisa likha ho to itni der baad
+  const CONFIRM_MS = 20000;          // Generate dabane ke baad naya tile dikhne ka intezar
+  const TILE_WINDOW = 12;            // grid ke upar ke itne tiles hi bharose se nazar aate hain
+  const LOG_MAX = 300;
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rand = (a, b) => a + Math.random() * Math.max(0, b - a);
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+
+  const E = {
+    running: false, paused: false, busy: false, finishing: false,
+    jobs: [], groups: [], cfg: {}, nextSendAt: 0, startedAt: 0,
+    note: '', timer: null, consecSubmitFails: 0, warnedCap: false
+  };
+  let logs = [];
+  let lastSave = 0;
+  let saveQueued = false;
+
+  // ---------------------------------------------------------------- log / save
+  function log(msg, level) {
+    logs.push({ t: Date.now(), l: level || 'info', m: String(msg) });
+    if (logs.length > LOG_MAX) logs.shift();
+    try { console.log('[NB engine]', msg); } catch (e) {}
+    save();
+  }
+
+  function counts() {
+    const c = { total: E.jobs.length, queued: 0, sending: 0, generating: 0, done: 0, failed: 0, interrupted: 0, sent: 0 };
+    E.jobs.forEach((j) => {
+      if (c[j.status] !== undefined) c[j.status]++;
+      if (j.attempts > 0) c.sent++;
+    });
+    return c;
+  }
+
+  function snapshot() {
+    return {
+      running: E.running, paused: E.paused, note: E.note, startedAt: E.startedAt, updatedAt: Date.now(),
+      counts: counts(), outputs: E.cfg.outputsResolved || null,
+      jobs: E.jobs.map((j) => ({
+        idx: j.idx, text: j.text.slice(0, 90), status: j.status, attempts: j.attempts, outs: j.outsReady || 0, err: j.err || ''
+      }))
+    };
+  }
+
+  function save(force) {
+    const now = Date.now();
+    if (!force && now - lastSave < 400) {
+      if (!saveQueued) { saveQueued = true; setTimeout(() => { saveQueued = false; save(true); }, 450); }
+      return;
+    }
+    lastSave = now;
+    try {
+      chrome.storage.local.set({
+        engineState: snapshot(),
+        engineLog: logs.slice(-LOG_MAX),
+        promptCount: counts().sent
+      });
+    } catch (e) {}
+  }
+
+  // ---------------------------------------------------------------- DOM madadgar
+  function findOne(list) {
+    for (const s of list) { const el = document.querySelector(s); if (el) return el; }
+    return null;
+  }
+  const getEditor = () => findOne(SEL.editor);
+  const getGenerate = () => findOne(SEL.generate);
+  const editorText = () => { const ed = getEditor(); return ed ? norm(ed.innerText) : ''; };
+
+  function flowOutputs() {
+    const b = findOne(SEL.settings);
+    const m = b && /x\s*([1-4])\b/i.exec(b.textContent || '');
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function resolveOutputs() {
+    const want = E.cfg.outputs;
+    if (want && want !== 'auto') return parseInt(want, 10) || 1;
+    return flowOutputs() || 1;
+  }
+
+  function topScroll() {
+    try {
+      const sc = NB.getScroller();
+      if (sc && sc.scrollTop > 5) sc.scrollTop = 0;
+    } catch (e) {}
+  }
+
+  // grid ke tiles, DOM ki tarteeb mein (sab se naya pehle)
+  function tileInfos() {
+    return Array.from(document.querySelectorAll(SEL.tile)).map((t) => {
+      const img = t.querySelector(SEL.media);
+      const vid = t.querySelector('video');
+      const vurl = vid ? NB.getVideoUrl(vid) : '';
+      let key = null, url = '', isVideo = false, loaded = true;
+      if (vurl) { key = NB.keyOf(vid, vurl); url = vurl; isVideo = true; }
+      else if (img && img.src && img.src.indexOf('http') === 0) {
+        key = NB.keyOf(img, img.src); url = img.src;
+        loaded = img.complete && img.naturalWidth > 0;
+      }
+      return {
+        el: t, key: key, url: url, isVideo: isVideo, loaded: loaded,
+        overlayActive: !!t.querySelector(SEL.pending),
+        text: norm(t.innerText).slice(0, 140)
+      };
+    });
+  }
+
+  function snapshotTop() {
+    const infos = tileInfos();
+    const fk = infos.findIndex((i) => i.key);
+    return {
+      n: infos.length,
+      P: infos.filter((i) => i.overlayActive && !i.key).length,
+      firstKey: fk >= 0 ? infos[fk].key : null,
+      firstKeyIdx: fk
+    };
+  }
+  function topChanged(a, b) {
+    if (b.n > a.n || b.P > a.P) return true;
+    if (a.firstKey && b.firstKey === a.firstKey && b.firstKeyIdx > a.firstKeyIdx) return true;   // purane tiles neeche khisak gaye
+    return false;
+  }
+
+  // ---------------------------------------------------------------- background se baat (trusted input)
+  function bgCall(msg) {
+    return new Promise((resolve) => {
+      let done = false;
+      const t = setTimeout(() => { if (!done) { done = true; resolve({ ok: false, error: 'background jawab nahi de raha' }); } }, 8000);
+      try {
+        chrome.runtime.sendMessage(msg, (resp) => {
+          if (done) return; done = true; clearTimeout(t);
+          resolve(resp || { ok: false, error: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'no response' });
+        });
+      } catch (e) { clearTimeout(t); resolve({ ok: false, error: String(e) }); }
+    });
+  }
+
+  // ---------------------------------------------------------------- prompt daalna aur Generate dabana
+  async function fillPrompt(text) {
+    const ed = getEditor();
+    if (!ed) throw new Error('prompt box nahi mila');
+    ed.focus();
+    await sleep(120);
+    document.execCommand('selectAll');
+    if (E.cfg.inputMode === 'trusted') {
+      const r = await bgCall({ action: 'dbgInsert', text: text });
+      if (!r.ok) throw new Error('trusted typing fail: ' + r.error);
+    } else {
+      document.execCommand('delete');
+      document.execCommand('insertText', false, text);
+    }
+    await sleep(300);
+    const typed = editorText(), want = norm(text);
+    const ok = typed.length > 0 && (typed.indexOf(want.slice(0, 40)) === 0 || want.indexOf(typed.slice(0, 40)) === 0);
+    if (!ok) throw new Error('prompt box mein text register nahi hua (box: "' + typed.slice(0, 40) + '")');
+  }
+
+  async function clickGenerate() {
+    let btn = getGenerate();
+    const t0 = Date.now();
+    while (btn && btn.disabled && Date.now() - t0 < 4000) { await sleep(150); btn = getGenerate(); }
+    if (!btn) throw new Error('Generate button nahi mila');
+    if (btn.disabled) throw new Error('Generate button disabled hai (prompt register nahi hua?)');
+    if (E.cfg.inputMode === 'trusted') {
+      const r = btn.getBoundingClientRect();
+      const resp = await bgCall({ action: 'dbgClick', x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
+      if (!resp.ok) throw new Error('trusted click fail: ' + resp.error);
+    } else {
+      btn.click();
+    }
+  }
+
+  // ---------------------------------------------------------------- bhejna
+  function submitFailed(job, reason) {
+    job.submitFails = (job.submitFails || 0) + 1;
+    E.consecSubmitFails++;
+    log('Prompt #' + (job.idx + 1) + ' submit nahi hua: ' + reason, 'error');
+    if (job.submitFails >= 3) {
+      job.status = 'failed';
+      job.err = 'submit nahi ho saka: ' + reason;
+    } else {
+      job.status = 'queued';
+    }
+    E.nextSendAt = Date.now() + 4000;
+    if (E.consecSubmitFails >= 2) {
+      E.paused = true;
+      E.note = 'Prompts submit nahi ho rahe. Input method "Trusted" try karein, ya Flow ka page/prompt box check karein.';
+      log(E.note, 'error');
+    }
+  }
+
+  async function sendJob(job) {
+    const outputs = resolveOutputs();
+    E.cfg.outputsResolved = outputs;
+    job.status = 'sending';
+    log('Prompt #' + (job.idx + 1) + ' bhej raha hun (koshish ' + (job.attempts + 1) + ', outputs ' + outputs + ')');
+    save(true);
+    topScroll();
+    await sleep(150);
+    const before = snapshotTop();
+    try {
+      await fillPrompt(job.text);
+      await clickGenerate();
+    } catch (e) {
+      return submitFailed(job, e.message || String(e));
+    }
+
+    // naya tile aaya? (prompt box kabhi khali ho jata hai, kabhi nahi - isliye asal saboot tile hai)
+    let seen = false;
+    const t0 = Date.now();
+    while (Date.now() - t0 < CONFIRM_MS) {
+      await sleep(300);
+      topScroll();
+      if (topChanged(before, snapshotTop())) { seen = true; break; }
+    }
+    if (!seen) return submitFailed(job, 'Generate dabane ke baad naya tile nazar nahi aaya');
+
+    E.consecSubmitFails = 0;
+    job.attempts++;
+    const grp = {
+      id: E.groups.length + 1, job: job.idx, attempt: job.attempts, outputs: outputs, sentAt: Date.now(), resolved: false,
+      slots: Array.from({ length: outputs }, (_, j) => ({ out: j, status: 'pending', key: null, deadSince: 0, why: '' }))
+    };
+    E.groups.push(grp);
+    job.status = 'generating';
+    E.nextSendAt = Date.now() + rand(E.cfg.delayMin, E.cfg.delayMax) * 1000;
+    log('Prompt #' + (job.idx + 1) + ' ka tile aa gaya, ab generate ho raha hai');
+    save(true);
+  }
+
+  // ---------------------------------------------------------------- tiles ko prompts se jorna
+  function finalizeGroup(grp) {
+    grp.resolved = true;
+    const job = E.jobs[grp.job];
+    const ready = grp.slots.filter((s) => s.status === 'ready').length;
+    if (ready > 0) {
+      job.status = 'done';
+      job.outsReady = ready;
+      if (ready < grp.outputs) log('Prompt #' + (job.idx + 1) + ': ' + ready + '/' + grp.outputs + ' outputs mile (baqi fail)', 'warn');
+      else log('Prompt #' + (job.idx + 1) + ' tayyar');
+    } else {
+      const why = grp.slots.map((s) => s.why).filter(Boolean)[0] || 'fail';
+      if (job.attempts < E.cfg.retries + 1) {
+        job.status = 'queued';
+        E.nextSendAt = Math.max(E.nextSendAt, Date.now() + 3000);
+        log('Prompt #' + (job.idx + 1) + ' fail hui (' + why + '), dobara koshish ' + (job.attempts + 1) + '/' + (E.cfg.retries + 1), 'warn');
+      } else {
+        job.status = 'failed';
+        job.err = why;
+        log('Prompt #' + (job.idx + 1) + ' aakhir mein fail (' + why + ')', 'error');
+      }
+    }
+  }
+
+  function resolveSlots() {
+    const infos = tileInfos();
+    const now = Date.now();
+    const timeoutMs = (E.cfg.slotTimeoutSec || 600) * 1000;
+    let offset = 0;
+    for (let g = E.groups.length - 1; g >= 0; g--) {
+      const grp = E.groups[g];
+      if (!grp.resolved) {
+        grp.slots.forEach((slot, j) => {
+          if (slot.status !== 'pending') return;
+          const info = infos[offset + j];
+          const age = now - grp.sentAt;
+          if (!info) {
+            if (age > timeoutMs) { slot.status = 'failed'; slot.why = 'timeout (tile nazar nahi aaya)'; }
+            return;
+          }
+          if (info.key && !info.overlayActive && info.loaded) {
+            const owner = NB.ownedKeys.get(info.key);
+            if (owner && (owner.promptNo !== grp.job + 1 || owner.outNo !== j + 1)) {
+              log('Tile ka mel nahi khaya (prompt #' + (grp.job + 1) + ' ko prompt #' + owner.promptNo + ' ka tile mila). Grid ko upar rakhein.', 'warn');
+              return;
+            }
+            slot.status = 'ready';
+            slot.key = info.key;
+            NB.ownedKeys.set(info.key, { promptNo: grp.job + 1, outNo: j + 1, outTotal: grp.outputs });
+            NB.scheduleLiveScan(0);
+            return;
+          }
+          if (info.overlayActive || (info.key && !info.loaded)) { slot.deadSince = 0; }
+          else {
+            // na media na "generating" overlay: shayad fail hui
+            if (!slot.deadSince) slot.deadSince = now;
+            const dead = now - slot.deadSince;
+            const looksFailed = FAIL_RE.test(info.text);
+            if ((looksFailed && dead > DEAD_TEXT_MS) || dead > DEAD_FAIL_MS) {
+              slot.status = 'failed';
+              slot.why = looksFailed ? 'tile par likha: "' + info.text.slice(0, 60) + '"' : 'tile khali (na media na generating)';
+            }
+          }
+          if (slot.status === 'pending' && age > timeoutMs) { slot.status = 'failed'; slot.why = 'timeout'; }
+        });
+        if (grp.slots.every((s) => s.status !== 'pending')) finalizeGroup(grp);
+      }
+      offset += grp.outputs;
+    }
+  }
+
+  // ---------------------------------------------------------------- main loop
+  function effectiveConcurrency() {
+    const o = E.cfg.outputsResolved || resolveOutputs();
+    const cap = Math.max(1, Math.floor(TILE_WINDOW / o));
+    const c = Math.max(1, Math.min(6, E.cfg.concurrency));
+    if (c > cap && !E.warnedCap) {
+      E.warnedCap = true;
+      log('Concurrency ' + c + ' se ghata kar ' + cap + ' kar di (outputs ' + o + ' hain; grid ke upar ke sirf ' + TILE_WINDOW + ' tiles hi nazar aate hain)', 'warn');
+    }
+    return Math.min(c, cap);
+  }
+
+  async function tick() {
+    if (!E.running || E.busy) return;
+    E.busy = true;
+    try {
+      if (!NB.isProjectPage()) { E.note = 'Flow ke project ke andar nahi hain'; return; }
+      if (E.note && !E.paused) E.note = '';
+      topScroll();
+      resolveSlots();
+
+      const inflight = E.jobs.filter((j) => j.status === 'generating' || j.status === 'sending').length;
+      if (!E.paused && !E.finishing && inflight < effectiveConcurrency() && Date.now() >= E.nextSendAt) {
+        const job = E.jobs.find((j) => j.status === 'queued');
+        if (job) await sendJob(job);
+      }
+
+      const open = E.jobs.some((j) => j.status === 'queued' || j.status === 'sending' || j.status === 'generating');
+      if (!open && !E.finishing) finish();
+      save();
+    } catch (e) {
+      log('engine error: ' + (e.message || e), 'error');
+    } finally {
+      E.busy = false;
+    }
+  }
+
+  async function finish() {
+    E.finishing = true;
+    const c = counts();
+    log('Complete: ' + c.done + '/' + c.total + ' prompts ho gaye' + (c.failed ? ', ' + c.failed + ' fail' : ''), c.failed ? 'warn' : 'info');
+    E.running = false;
+    clearInterval(E.timer); E.timer = null;
+    save(true);
+    NB.scheduleLiveScan(0);
+    await sleep(3500);                 // aakhri downloads queue mein pahunchne do
+    NB.engineActive = false;
+    await bgCall({ action: 'engineEnd' });
+    E.finishing = false;
+  }
+
+  function ensureTimer() { if (!E.timer) E.timer = setInterval(tick, 600); }
+
+  // ---------------------------------------------------------------- control
+  function start(prompts, cfg) {
+    if (E.running) return { ok: false, error: 'Engine pehle se chal raha hai' };
+    if (!NB.isProjectPage()) return { ok: false, error: 'Pehle Flow ke kisi project ke andar jayein' };
+    if (!getEditor() || !getGenerate()) return { ok: false, error: 'Prompt box ya Generate button nahi mila' };
+    const list = (prompts || []).map((s) => String(s).trim()).filter(Boolean);
+    if (!list.length) return { ok: false, error: 'Prompts ki list khali hai' };
+    const c = Object.assign({ concurrency: 2, delayMin: 3, delayMax: 8, retries: 2, outputs: 'auto', inputMode: 'normal', slotTimeoutSec: 600 }, cfg || {});
+    c.concurrency = Math.max(1, Math.min(6, parseInt(c.concurrency, 10) || 1));
+    c.retries = Math.max(0, Math.min(5, parseInt(c.retries, 10) || 0));
+    c.delayMin = Math.max(0, Number(c.delayMin) || 0);
+    c.delayMax = Math.max(c.delayMin, Number(c.delayMax) || c.delayMin);
+    E.cfg = c;
+    E.jobs = list.map((t, i) => ({ idx: i, text: t, status: 'queued', attempts: 0, submitFails: 0, outsReady: 0, err: '' }));
+    E.groups = [];
+    NB.ownedKeys.clear();
+    E.running = true; E.paused = false; E.finishing = false; E.note = '';
+    E.nextSendAt = 0; E.startedAt = Date.now(); E.consecSubmitFails = 0; E.warnedCap = false;
+    logs = [];
+    NB.engineActive = true;
+    bgCall({ action: 'engineBegin' });
+    E.cfg.outputsResolved = resolveOutputs();
+    log('Run shuru: ' + list.length + ' prompts, concurrency ' + c.concurrency + ', delay ' + c.delayMin + '-' + c.delayMax + 's, retries ' + c.retries +
+        ', outputs ' + E.cfg.outputsResolved + ', input ' + c.inputMode);
+    ensureTimer();
+    save(true);
+    return { ok: true, total: list.length, outputs: E.cfg.outputsResolved };
+  }
+
+  function stop() {
+    if (!E.running && !E.finishing) return { ok: true };
+    E.running = false; E.paused = false;
+    clearInterval(E.timer); E.timer = null;
+    E.jobs.forEach((j) => { if (j.status === 'generating' || j.status === 'sending') j.status = 'interrupted'; });
+    NB.engineActive = false;
+    log('Run roka gaya', 'warn');
+    save(true);
+    bgCall({ action: 'engineEnd' });
+    return { ok: true };
+  }
+
+  function retryFailed() {
+    if (E.running) return { ok: false, error: 'Pehle Run ruk jaye' };
+    const redo = E.jobs.filter((j) => j.status === 'failed' || j.status === 'interrupted');
+    if (!redo.length) return { ok: false, error: 'Koi fail ya adhoori prompt nahi' };
+    redo.forEach((j) => { j.status = 'queued'; j.attempts = 0; j.submitFails = 0; j.err = ''; });
+    E.running = true; E.paused = false; E.finishing = false; E.nextSendAt = 0; E.consecSubmitFails = 0;
+    NB.engineActive = true;
+    bgCall({ action: 'engineBegin' });
+    log(redo.length + ' prompts dobara queue mein');
+    ensureTimer();
+    save(true);
+    return { ok: true, total: redo.length };
+  }
+
+  function probe() {
+    return {
+      ok: true, project: NB.isProjectPage(), editor: !!getEditor(), generate: !!getGenerate(),
+      outputs: flowOutputs(), running: E.running
+    };
+  }
+
+  try {
+    chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+      switch (req && req.action) {
+        case 'engineStart': sendResponse(start(req.prompts, req.cfg)); return false;
+        case 'enginePause': E.paused = true; E.note = 'Pause'; log('Pause'); save(true); sendResponse({ ok: true }); return false;
+        case 'engineResume': E.paused = false; E.note = ''; E.consecSubmitFails = 0; log('Resume'); save(true); sendResponse({ ok: true }); return false;
+        case 'engineStop': sendResponse(stop()); return false;
+        case 'engineRetryFailed': sendResponse(retryFailed()); return false;
+        case 'engineProbe': sendResponse(probe()); return false;
+        default: return false;
+      }
+    });
+
+    // page reload hua to purani run ki halat "ruki hui" dikhao (tiles ka mel kho chuka hai)
+    chrome.storage.local.get(['engineState'], (r) => {
+      const st = r && r.engineState;
+      if (st && st.running) {
+        st.running = false; st.paused = false;
+        st.note = 'Page reload hua, engine ruk gaya. Adhoori prompts ko "Retry failed" se dobara chalayein.';
+        (st.jobs || []).forEach((j) => { if (j.status === 'generating' || j.status === 'sending') j.status = 'interrupted'; });
+        chrome.storage.local.set({ engineState: st });
+      }
+    });
+  } catch (e) {}
+}
