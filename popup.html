@@ -174,6 +174,46 @@
     .p-sub b { color: #fff; font-size: 19px; margin-left: 8px; letter-spacing: 0; text-shadow: 0 0 10px #00d2ff; }
     .p-status { margin-top: 6px; font-size: 12px; color: #a0e4ff; line-height: 1.4; }
     .p-note { margin-top: 6px; font-size: 11px; color: #ffb4a8; line-height: 1.4; }
+
+    /* ---------- Tabs / Prompting ---------- */
+    .container { overflow-y: auto; }
+    .tab { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+    .tabbar { display: flex; gap: 4px; border-bottom: 1px solid #1e293b; }
+    .tabbtn {
+      flex: 1; padding: 8px 4px; background: none; border: none; border-bottom: 2px solid transparent;
+      color: #94a3b8; font-size: 13px; cursor: pointer;
+    }
+    .tabbtn.active { color: #00d2ff; border-bottom-color: #00d2ff; font-weight: bold; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .card.small { padding: 10px; gap: 6px; }
+    .delayrow { display: flex; align-items: center; gap: 6px; }
+    .delayrow input { width: 100%; padding: 8px 6px; border-radius: 6px; border: 1px solid #2a3547; background: #0f172a; color: #fff; font-size: 13px; box-sizing: border-box; }
+    .rowbetween { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    textarea {
+      width: 100%; min-height: 120px; resize: vertical; padding: 8px 10px; border-radius: 6px; border: 1px solid #2a3547;
+      background: #0f172a; color: #fff; font-size: 12px; font-family: inherit; box-sizing: border-box;
+    }
+    .mini { padding: 5px 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; font-size: 11px; cursor: pointer; }
+    .miniselect { width: auto; padding: 3px 4px; font-size: 11px; }
+    .btnrow { display: flex; gap: 8px; }
+    .btnrow .btn { flex: 1; }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .queue { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .qrow { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 6px; background: #0f172a; border-radius: 6px; }
+    .qn { color: #00d2ff; min-width: 22px; font-weight: bold; }
+    .qt { flex: 1; color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: #334155; color: #e2e8f0; white-space: nowrap; }
+    .chip.sending { background: #1d4ed8; }
+    .chip.generating { background: #0e7490; }
+    .chip.done { background: #047857; }
+    .chip.failed { background: #b91c1c; }
+    .chip.interrupted { background: #b45309; }
+    .note.warn { color: #fbbf24; }
+    .logbox {
+      flex: 1; min-height: 300px; max-height: 70vh; overflow-y: auto; background: #0f172a; border: 1px solid #1e293b;
+      border-radius: 6px; padding: 8px; font-family: Consolas, monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap;
+    }
+    .logbox .warn { color: #fbbf24; } .logbox .error { color: #f87171; } .logbox .t { color: #64748b; }
   </style>
 </head>
 <body>
@@ -184,9 +224,16 @@
       <span class="version-badge" id="appVersion">v1.5</span>
     </div>
 
+    <div class="tabbar">
+      <button class="tabbtn active" data-tab="Downloader">Downloader</button>
+      <button class="tabbtn" data-tab="Prompts">Prompts</button>
+      <button class="tabbtn" data-tab="Logs">Logs</button>
+    </div>
+
+    <div id="tabDownloader" class="tab">
     <div class="viewbar">
-      <button id="viewNormal" class="seg">Normal</button>
-      <button id="viewAnimated" class="seg active">Animated</button>
+      <button id="viewNormal" class="seg active">Normal</button>
+      <button id="viewAnimated" class="seg">Animated</button>
       <button id="portalReopen" class="portal-reopen hidden" title="Portal wapas kholein">◉</button>
     </div>
 
@@ -238,6 +285,68 @@
     </div>
 
     <div class="status" id="statusText">Status: Ready</div>
+    </div><!-- /tabDownloader -->
+
+    <div id="tabPrompts" class="tab hidden">
+      <div class="note" id="engProbe">Flow se jaanch...</div>
+      <div class="grid2">
+        <div class="card small">
+          <div class="section-title">Concurrent prompts</div>
+          <select id="cfgConc"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+          <div class="note">Ek waqt mein kitne generate hon</div>
+        </div>
+        <div class="card small">
+          <div class="section-title">Random delay (second)</div>
+          <div class="delayrow"><input type="number" id="cfgDelayMin" min="0" value="3"><span>⇄</span><input type="number" id="cfgDelayMax" min="0" value="8"></div>
+          <div class="note">Agla prompt bhejne se pehle</div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card small">
+          <div class="section-title">Retries on failure</div>
+          <select id="cfgRetries"><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option></select>
+        </div>
+        <div class="card small">
+          <div class="section-title">Outputs per prompt</div>
+          <select id="cfgOutputs"><option value="auto" selected>Auto (Flow se)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+        </div>
+      </div>
+      <div class="card">
+        <div class="rowbetween">
+          <div class="section-title">Prompts</div>
+          <div><button id="promptsUpload" class="mini">Upload .txt</button><input type="file" id="promptsFile" accept=".txt,text/plain" class="hidden"></div>
+        </div>
+        <textarea id="promptsText" placeholder="Pehla prompt.&#10;Wo kai lines ka ho sakta hai.&#10;&#10;Doosra prompt blank line ke baad shuru hota hai.&#10;&#10;Teesra prompt."></textarea>
+        <div class="rowbetween">
+          <div class="note"><span id="promptsCount">0</span> prompts (har prompt blank line se alag)</div>
+          <label class="note">Input
+            <select id="cfgInput" class="miniselect"><option value="normal" selected>Normal</option><option value="trusted">Trusted (debugger)</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="rowbetween"><div class="section-title">Prompt queue</div><div id="engSummary" class="note"></div></div>
+        <div id="engQueue" class="queue"></div>
+        <div id="engNote" class="note warn"></div>
+      </div>
+      <div class="btnrow">
+        <button id="engRun" class="btn btn-success">▶ Run</button>
+        <button id="engPause" class="btn btn-secondary" disabled>⏸ Pause</button>
+        <button id="engStop" class="btn btn-danger">■ Stop</button>
+      </div>
+      <div class="btnrow">
+        <button id="engRetry" class="btn btn-secondary">↻ Retry failed</button>
+        <button id="engClear" class="btn btn-secondary">Clear</button>
+      </div>
+    </div>
+
+    <div id="tabLogs" class="tab hidden">
+      <div class="rowbetween">
+        <div class="section-title">Debug logs</div>
+        <div><button id="logCopy" class="mini">Copy</button> <button id="logClear" class="mini">Clear</button></div>
+      </div>
+      <div id="logBox" class="logbox"></div>
+    </div>
   </div>
 
   <!-- Portal: Animated view (poora panel) -->
