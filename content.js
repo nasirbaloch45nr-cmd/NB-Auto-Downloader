@@ -3,6 +3,11 @@
 if (!window.__nbAutoDownloaderLoaded) {
   window.__nbAutoDownloaderLoaded = true;
 
+  // Engine (engine.js) ke saath shared hissa
+  const NB = (window.NB = window.NB || {});
+  NB.ownedKeys = NB.ownedKeys || new Map();   // engine ke apne tiles: key -> { promptNo, outNo, outTotal }
+  NB.engineActive = false;
+
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   // Width/height se ratio ka naam nikalta hai (4% tak farq maaf)
@@ -61,6 +66,13 @@ if (!window.__nbAutoDownloaderLoaded) {
     return !/^\/(edit|tools|trash)(\/|$)/.test(m[1] || '');
   }
 
+  // Tile ki stable pehchan: media-id (images) ya video link ka bina-query hissa
+  function keyOf(el, url) {
+    const holder = el.closest('[data-media-id]');
+    const id = holder ? holder.getAttribute('data-media-id') : '';
+    return id || url.split('?')[0];
+  }
+
   function getVideoUrl(vid) {
     const source = vid.querySelector('source');
     const candidates = [vid.currentSrc, vid.src, source ? source.src : ''];
@@ -89,9 +101,7 @@ if (!window.__nbAutoDownloaderLoaded) {
 
     const push = (el, url, isVideo) => {
       const tile = el.closest('flow-grid-tile-container') || el.closest('[class*="tile"]') || el.parentElement;
-      const idHolder = el.closest('[data-media-id]');
-      const mediaId = idHolder ? idHolder.getAttribute('data-media-id') : '';
-      const key = mediaId || url.split('?')[0];
+      const key = keyOf(el, url);
       const isGenerating = isTileGenerating(tile, el, isVideo);
       const pendingOverlay = !!(tile && tile.querySelector && tile.querySelector('flow-pending-tile'));
 
@@ -251,6 +261,26 @@ if (!window.__nbAutoDownloaderLoaded) {
     const found = new Map();
     collectVisible(found, { dlVideos: settings.dlVideos ?? true, dlImages: settings.dlImages ?? true });
 
+    // Prompting engine chal raha ho: sirf engine ke apne tiles, foran, prompt ke number ke saath
+    if (NB.engineActive) {
+      const mine = [];
+      found.forEach((item, key) => {
+        const own = NB.ownedKeys.get(key);
+        if (!own || item.isGenerating || sentKeys.has(key)) return;
+        sentKeys.add(key);
+        item.promptNo = own.promptNo;
+        item.outNo = own.outNo;
+        item.outTotal = own.outTotal;
+        mine.push(item);
+      });
+      publishLiveInfo(pendingTiles.length, 0);
+      if (mine.length) {
+        mine.sort(olderFirst);
+        try { chrome.runtime.sendMessage({ action: 'liveMedia', mediaList: mine }); } catch (e) {}
+      }
+      return;
+    }
+
     // Prompt counter: tiles ki "pehchan" par nahi (Flow unhein dobara banati hai), sirf ginti par.
     // naye prompts = (abhi media ke baghair pending tiles - pichli baar) + (pending se tayyar hote tiles)
     const noMedia = pendingTiles.filter((p) => !p.hasMedia).length;
@@ -361,4 +391,13 @@ if (!window.__nbAutoDownloaderLoaded) {
       }
     });
   } catch (e) {}
+
+  // engine.js ke liye
+  Object.assign(NB, {
+    getScroller: getScroller,
+    getVideoUrl: getVideoUrl,
+    keyOf: keyOf,
+    isProjectPage: isProjectPage,
+    scheduleLiveScan: scheduleLiveScan
+  });
 }
