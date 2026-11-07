@@ -86,7 +86,11 @@ async function processQueue(saveFolder) {
 
       if (downloadedUrls.has(item.key) || failedUrls.has(item.key)) continue;
 
-      const seqStr = String(clipSequenceCounter).padStart(3, '0');
+      // Engine ke tiles ko prompt ka number milta hai (tarteeb hamesha prompts ki list wali)
+      const isEngineItem = !!item.promptNo;
+      const seqStr = isEngineItem
+        ? String(item.promptNo).padStart(3, '0') + (item.outTotal > 1 ? '-' + item.outNo : '')
+        : String(clipSequenceCounter).padStart(3, '0');
       const dateTimeStr = getFormattedDateTime();
       const ext = item.isVideo ? 'mp4' : getImageExtension(item.url);
       const safeFolder = (saveFolder || 'GoogleFlow_Media').replace(/[<>:"|?*\\]/g, '_').replace(/^\/+|\/+$/g, '');
@@ -102,7 +106,7 @@ async function processQueue(saveFolder) {
       }
 
       downloadedUrls.add(item.key);
-      clipSequenceCounter++;
+      if (!isEngineItem) clipSequenceCounter++;
       totalDownloadedCount++;
 
       chrome.storage.local.set({
@@ -188,7 +192,7 @@ function safeSendTabMessage(tabId, message, callback) {
       return;
     }
 
-    chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['content.js'] }, () => {
+    chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['content.js', 'engine.js'] }, () => {
       if (chrome.runtime.lastError) {
         console.warn('[NB] Inject failed:', chrome.runtime.lastError.message);
         if (callback) callback(null);
@@ -225,7 +229,96 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+// ---------- Prompting engine ke madadgar ----------
+function findFlowTab(cb) {
+  chrome.tabs.query({ url: 'https://flow.google.com/*' }, (tabs) => {
+    tabs = tabs || [];
+    const inProject = (t) => /\/project\//.test(t.url || '');
+    cb(tabs.find((t) => t.active && inProject(t)) || tabs.find(inProject) || tabs[0] || null);
+  });
+}
+
+// Trusted input (optional): chrome.debugger se asli jaisa typing/click. Sirf tab jab user ne "Trusted" chuna ho.
+const attachedTabs = new Set();
+let debuggerHooked = false;
+function dbgAttach(tabId) {
+  return new Promise((resolve, reject) => {
+    if (!chrome.debugger) { reject(new Error('debugger ki ijazat nahi di gayi')); return; }
+    if (!debuggerHooked && chrome.debugger.onDetach) {
+      chrome.debugger.onDetach.addListener((src) => attachedTabs.delete(src.tabId));
+      debuggerHooked = true;
+    }
+    if (attachedTabs.has(tabId)) { resolve(); return; }
+    chrome.debugger.attach({ tabId: tabId }, '1.3', () => {
+      const err = chrome.runtime.lastError;
+      if (err && !/already attached/i.test(err.message)) { reject(new Error(err.message)); return; }
+      attachedTabs.add(tabId);
+      resolve();
+    });
+  });
+}
+function dbgSend(tabId, method, params) {
+  return new Promise((resolve, reject) => {
+    chrome.debugger.sendCommand({ tabId: tabId }, method, params || {}, (res) => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message)); else resolve(res);
+    });
+  });
+}
+async function handleDebugger(request, sender, sendResponse) {
+  try {
+    const tabId = sender.tab && sender.tab.id;
+    if (!tabId) throw new Error('tab nahi mila');
+    await dbgAttach(tabId);
+    if (request.action === 'dbgInsert') {
+      await dbgSend(tabId, 'Input.insertText', { text: request.text || '' });
+    } else {
+      const x = request.x, y = request.y;
+      await dbgSend(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: x, y: y });
+      await dbgSend(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: x, y: y, button: 'left', clickCount: 1 });
+      await dbgSend(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: x, y: y, button: 'left', clickCount: 1 });
+    }
+    sendResponse({ ok: true });
+  } catch (e) {
+    sendResponse({ ok: false, error: String((e && e.message) || e) });
+  }
+}
+function detachDebuggers() {
+  attachedTabs.forEach((tabId) => {
+    try { chrome.debugger.detach({ tabId: tabId }, () => void chrome.runtime.lastError); } catch (e) {}
+  });
+  attachedTabs.clear();
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // ---------- Prompting engine ----------
+  if (request.action === 'engineBegin') {
+    resetSession();
+    chrome.storage.local.set({ isMonitoring: true, promptCount: 0, generatingCount: 0, holdUntil: 0 });
+    chrome.alarms.create('autoMonitorAlarm', { periodInMinutes: 0.5 });
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (request.action === 'engineEnd') {
+    chrome.storage.local.set({ isMonitoring: false });
+    chrome.alarms.clear('autoMonitorAlarm');
+    detachDebuggers();
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (request.action === 'engineCommand') {
+    findFlowTab((tab) => {
+      if (!tab) { sendResponse({ ok: false, error: 'Flow ka tab nahi mila. flow.google.com par apna project kholein.' }); return; }
+      safeSendTabMessage(tab.id, request.payload, (resp) => {
+        sendResponse(resp || { ok: false, error: 'Flow page par engine nahi chala. Page ko F5 karke dobara try karein.' });
+      });
+    });
+    return true;
+  }
+  if (request.action === 'dbgInsert' || request.action === 'dbgClick') {
+    handleDebugger(request, sender, sendResponse);
+    return true;
+  }
+
   // Prompt counter: naye generate hone wale tiles (sirf monitoring ke dauran)
   if (request.action === 'promptsStarted') {
     chrome.storage.local.get(['isMonitoring', 'promptCount'], (st) => {
