@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
   portalVideo.addEventListener('loadeddata', () => pNote.classList.add('hidden'));
 
   // ---------- state ----------
-  let viewMode = 'animated';            // 'normal' | 'animated'
+  let viewMode = 'normal';              // 'normal' | 'animated'
   let session = null;                   // { mode: 'monitor' | 'current' }
   let portalVisible = false;
   let tickTimer = null;
@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (res.ratioFilter) aspectRatioSelect.value = res.ratioFilter;
     if (res.keepOrder !== undefined) keepOrderInput.checked = res.keepOrder;
 
-    viewMode = res.viewMode === 'normal' ? 'normal' : 'animated';
+    viewMode = res.viewMode === 'animated' ? 'animated' : 'normal';
     viewNormalBtn.classList.toggle('active', viewMode === 'normal');
     viewAnimatedBtn.classList.toggle('active', viewMode === 'animated');
 
@@ -334,5 +334,168 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       refreshReopenButton();
     }
+  });
+
+  // =====================================================================
+  //  Tabs
+  // =====================================================================
+  const tabNames = ['Downloader', 'Prompts', 'Logs'];
+  const tabBtns = document.querySelectorAll('.tabbtn');
+  function showTab(name) {
+    tabNames.forEach((n) => $('tab' + n).classList.toggle('hidden', n !== name));
+    tabBtns.forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+    chrome.storage.local.set({ activeTab: name });
+    if (name === 'Prompts') probeFlow();
+  }
+  tabBtns.forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+  // =====================================================================
+  //  Prompting
+  // =====================================================================
+  const cfgConc = $('cfgConc'), cfgDelayMin = $('cfgDelayMin'), cfgDelayMax = $('cfgDelayMax');
+  const cfgRetries = $('cfgRetries'), cfgOutputs = $('cfgOutputs'), cfgInput = $('cfgInput');
+  const promptsText = $('promptsText'), promptsCount = $('promptsCount');
+  const promptsUpload = $('promptsUpload'), promptsFile = $('promptsFile');
+  const engRun = $('engRun'), engPause = $('engPause'), engStop = $('engStop');
+  const engRetry = $('engRetry'), engClear = $('engClear');
+  const engQueue = $('engQueue'), engSummary = $('engSummary'), engNote = $('engNote'), engProbe = $('engProbe');
+  const logBox = $('logBox'), logCopy = $('logCopy'), logClear = $('logClear');
+
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const parsePrompts = (text) => text.replace(/\r/g, '').split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+
+  function readCfg() {
+    return {
+      concurrency: parseInt(cfgConc.value, 10), delayMin: Number(cfgDelayMin.value) || 0, delayMax: Number(cfgDelayMax.value) || 0,
+      retries: parseInt(cfgRetries.value, 10), outputs: cfgOutputs.value, inputMode: cfgInput.value
+    };
+  }
+  let cfgTimer = null;
+  function saveEngineCfg() {
+    clearTimeout(cfgTimer);
+    cfgTimer = setTimeout(() => chrome.storage.local.set({ engineCfg: Object.assign(readCfg(), { promptsText: promptsText.value }) }), 300);
+  }
+  function updatePromptsCount() { promptsCount.textContent = parsePrompts(promptsText.value).length; }
+
+  [cfgConc, cfgDelayMin, cfgDelayMax, cfgRetries, cfgOutputs].forEach((el) => el.addEventListener('change', saveEngineCfg));
+  promptsText.addEventListener('input', () => { updatePromptsCount(); saveEngineCfg(); });
+  cfgInput.addEventListener('change', () => {
+    if (cfgInput.value === 'trusted') {
+      // debugger ki ijazat sirf tab maangte hain jab user "Trusted" chune (Chrome peeli debugging patti dikhata hai)
+      chrome.permissions.request({ permissions: ['debugger'] }, (granted) => {
+        if (!granted) { cfgInput.value = 'normal'; setEngNote('debugger ki ijazat nahi mili, Normal par wapas'); }
+        saveEngineCfg();
+      });
+    } else {
+      saveEngineCfg();
+    }
+  });
+  promptsUpload.addEventListener('click', () => promptsFile.click());
+  promptsFile.addEventListener('change', () => {
+    const f = promptsFile.files && promptsFile.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      promptsText.value = (promptsText.value.trim() ? promptsText.value.trim() + '\n\n' : '') + String(r.result).trim();
+      updatePromptsCount(); saveEngineCfg();
+    };
+    r.readAsText(f);
+    promptsFile.value = '';
+  });
+
+  function setEngNote(t) { engNote.textContent = t || ''; }
+  function sendEngine(payload, cb) {
+    chrome.runtime.sendMessage({ action: 'engineCommand', payload: payload }, (resp) => {
+      const err = chrome.runtime.lastError;
+      cb && cb(err ? { ok: false, error: err.message } : (resp || { ok: false, error: 'jawab nahi aaya' }));
+    });
+  }
+
+  function probeFlow() {
+    sendEngine({ action: 'engineProbe' }, (r) => {
+      if (!r.ok && r.error) { engProbe.textContent = '⚠ ' + r.error; return; }
+      engProbe.textContent = (r.project ? '✓ project' : '✗ project page nahi') + ' · ' + (r.editor ? '✓ prompt box' : '✗ prompt box') +
+        ' · ' + (r.generate ? '✓ Generate' : '✗ Generate') + (r.outputs ? ' · Flow par x' + r.outputs : '');
+    });
+  }
+
+  engRun.addEventListener('click', () => {
+    const prompts = parsePrompts(promptsText.value);
+    if (!prompts.length) { setEngNote('Pehle prompts likhein'); return; }
+    saveEngineCfg();
+    setEngNote('');
+    sendEngine({ action: 'engineStart', prompts: prompts, cfg: readCfg() }, (r) => setEngNote(r.ok ? '' : r.error));
+  });
+  engPause.addEventListener('click', () => {
+    chrome.storage.local.get(['engineState'], (res) => {
+      const paused = res.engineState && res.engineState.paused;
+      sendEngine({ action: paused ? 'engineResume' : 'enginePause' }, (r) => setEngNote(r.ok ? '' : r.error));
+    });
+  });
+  engStop.addEventListener('click', () => sendEngine({ action: 'engineStop' }, (r) => setEngNote(r.ok ? '' : r.error)));
+  engRetry.addEventListener('click', () => sendEngine({ action: 'engineRetryFailed' }, (r) => setEngNote(r.ok ? '' : r.error)));
+  engClear.addEventListener('click', () => {
+    chrome.storage.local.get(['engineState'], (res) => {
+      if (res.engineState && res.engineState.running) { setEngNote('Pehle Stop dabayein'); return; }
+      chrome.storage.local.remove(['engineState', 'engineLog']);
+      setEngNote('');
+    });
+  });
+
+  const chipText = { queued: 'intezar', sending: 'bhej raha', generating: 'generate', done: 'done', failed: 'fail', interrupted: 'adhoori' };
+  function renderEngine(res) {
+    const st = res.engineState;
+    if (!st || !st.jobs || !st.jobs.length) {
+      engQueue.innerHTML = '<div class="note">Abhi koi run nahi</div>';
+      engSummary.textContent = '';
+    } else {
+      engQueue.innerHTML = st.jobs.map((j) =>
+        '<div class="qrow"><span class="qn">' + (j.idx + 1) + '</span><span class="qt" title="' + esc(j.text) + '">' + esc(j.text.slice(0, 50)) +
+        '</span><span class="chip ' + j.status + '" title="' + esc(j.err || '') + '">' + chipText[j.status] + (j.attempts > 1 ? ' ×' + j.attempts : '') + '</span></div>'
+      ).join('');
+      const c = st.counts || {};
+      engSummary.textContent = 'Bheje ' + (c.sent || 0) + '/' + (c.total || 0) + ' · Done ' + (c.done || 0) + ' · Fail ' + (c.failed || 0) +
+        (st.running ? (st.paused ? ' · PAUSE' : ' · chal raha') : '');
+    }
+    const running = !!(st && st.running);
+    engRun.disabled = running;
+    engPause.disabled = !running;
+    engPause.textContent = st && st.paused ? '▶ Resume' : '⏸ Pause';
+    if (st && st.note) setEngNote(st.note);
+
+    if (!$('tabLogs').classList.contains('hidden')) {
+      const lines = res.engineLog || [];
+      const atBottom = logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 30;
+      logBox.innerHTML = lines.map((l) => {
+        const d = new Date(l.t), pad = (n) => String(n).padStart(2, '0');
+        return '<div class="' + (l.l || '') + '"><span class="t">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '</span> ' + esc(l.m) + '</div>';
+      }).join('') || '<div class="t">Abhi koi log nahi.</div>';
+      if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+    }
+  }
+  setInterval(() => chrome.storage.local.get(['engineState', 'engineLog'], renderEngine), 700);
+
+  logCopy.addEventListener('click', () => {
+    chrome.storage.local.get(['engineLog'], (res) => {
+      const text = (res.engineLog || []).map((l) => new Date(l.t).toLocaleTimeString() + ' [' + l.l + '] ' + l.m).join('\n');
+      navigator.clipboard.writeText(text).catch(() => {});
+    });
+  });
+  logClear.addEventListener('click', () => chrome.storage.local.remove(['engineLog']));
+
+  // purani settings aur aakhri tab wapas
+  chrome.storage.local.get(['engineCfg', 'activeTab'], (res) => {
+    const c = res.engineCfg;
+    if (c) {
+      if (c.concurrency) cfgConc.value = String(c.concurrency);
+      if (c.delayMin !== undefined) cfgDelayMin.value = c.delayMin;
+      if (c.delayMax !== undefined) cfgDelayMax.value = c.delayMax;
+      if (c.retries !== undefined) cfgRetries.value = String(c.retries);
+      if (c.outputs) cfgOutputs.value = c.outputs;
+      if (c.inputMode) cfgInput.value = c.inputMode;
+      if (c.promptsText) promptsText.value = c.promptsText;
+    }
+    updatePromptsCount();
+    showTab(tabNames.indexOf(res.activeTab) >= 0 ? res.activeTab : 'Downloader');
   });
 });
